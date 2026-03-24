@@ -69,7 +69,7 @@ UPLOADER=$(echo "$META" | cut -f2)
 [[ -z "$ARTIST"      ]] && ARTIST="$UPLOADER"
 
 # Sanitize filename
-SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*' '_')
+SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*'"'" '_')
 WORKDIR="$(pwd)/$SAFE_OUTPUT_NAME"
 mkdir -p "$WORKDIR"
 

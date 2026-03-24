@@ -26,7 +26,7 @@ External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
 
 - ffmpeg concat list paths must use **forward slashes** and escape single quotes as `'\''`
 - Chapter metadata files must start with exactly `;FFMETADATA1` on the first byte
-- Filenames are sanitized by replacing `<>:"/\|?*` with `_`
+- Filenames are sanitized by replacing `<>:"/\|?*'` with `_`
 
 ## Testing
 
