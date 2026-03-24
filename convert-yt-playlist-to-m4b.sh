@@ -57,7 +57,7 @@ done
 
 # ---------- Step 1: playlist metadata ----------
 echo -e "\033[0;36m[1/5] Fetching playlist metadata...\033[0m"
-META=$(yt-dlp --flat-playlist --print "%(playlist_title)s	%(uploader)s" "$URL" | head -1) || true
+META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" "$URL" 2>/dev/null) || true
 PLAYLIST_TITLE=$(echo "$META" | cut -f1)
 UPLOADER=$(echo "$META" | cut -f2)
 [[ -z "$PLAYLIST_TITLE" ]] && PLAYLIST_TITLE="audiobook"
