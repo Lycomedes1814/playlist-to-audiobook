@@ -50,6 +50,8 @@ function Convert-YtPlaylistToM4b {
     yt-dlp `
         --yes-playlist `
         --no-overwrites `
+        --retries infinite `
+        --fragment-retries infinite `
         -x `
         -f "bestaudio" `
         -o (Join-Path $workdir "%(playlist_index)03d - %(title)s.%(ext)s") `

@@ -83,6 +83,8 @@ echo -e "\033[0;36m[2/5] Downloading playlist audio...\033[0m"
 yt-dlp \
     --yes-playlist \
     --no-overwrites \
+    --retries infinite \
+    --fragment-retries infinite \
     -x \
     -f "bestaudio" \
     -o "$WORKDIR/%(playlist_index)03d - %(title)s.%(ext)s" \

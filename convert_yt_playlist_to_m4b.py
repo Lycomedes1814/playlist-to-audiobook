@@ -97,6 +97,7 @@ def main():
     print("\033[0;36m[2/5] Downloading playlist audio...\033[0m")
     run(
         "yt-dlp", "--yes-playlist", "--no-overwrites",
+        "--retries", "infinite", "--fragment-retries", "infinite",
         "-x", "-f", "bestaudio",
         "-o", str(workdir / "%(playlist_index)03d - %(title)s.%(ext)s"),
         args.url,
