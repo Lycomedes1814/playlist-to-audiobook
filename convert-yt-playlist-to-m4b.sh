@@ -9,13 +9,13 @@
 #                                  [-a <artist>] [-l <album>] [-b <bitrate-kbps>] [-k]
 #
 # Options:
-#   -u  URL of the YouTube playlist (required)
-#   -o  Output filename (without extension); defaults to playlist title
-#   -t  Title metadata tag; defaults to playlist title
-#   -a  Artist metadata tag; defaults to playlist uploader
-#   -l  Album metadata tag; defaults to playlist title
-#   -b  Audio bitrate in kbps; defaults to 160
-#   -k  Keep downloaded files after encoding
+#   -u, --url      URL of the YouTube playlist (required)
+#   -o, --output   Output filename (without extension); defaults to playlist title
+#   -t, --title    Title metadata tag; defaults to playlist title
+#   -a, --artist   Artist metadata tag; defaults to playlist uploader
+#   -l, --album    Album metadata tag; defaults to playlist title
+#   -b, --bitrate  Audio bitrate in kbps; defaults to 160
+#   -k, --keep     Keep downloaded files after encoding
 
 set -euo pipefail
 
@@ -29,22 +29,27 @@ BITRATE=160
 KEEP=0
 
 # ---------- parse args ----------
-while getopts ":u:o:t:a:l:b:k" opt; do
-    case $opt in
-        u) URL="$OPTARG" ;;
-        o) OUTPUT_NAME="$OPTARG" ;;
-        t) TITLE="$OPTARG" ;;
-        a) ARTIST="$OPTARG" ;;
-        l) ALBUM="$OPTARG" ;;
-        b) BITRATE="$OPTARG" ;;
-        k) KEEP=1 ;;
-        :) echo "Option -$OPTARG requires an argument." >&2; exit 1 ;;
-        \?) echo "Unknown option: -$OPTARG" >&2; exit 1 ;;
+PARSED=$(getopt -o u:o:t:a:l:b:k \
+    --long url:,output:,title:,artist:,album:,bitrate:,keep \
+    -n "$(basename "$0")" -- "$@") || exit 1
+eval set -- "$PARSED"
+
+while true; do
+    case "$1" in
+        -u|--url)     URL="$2";         shift 2 ;;
+        -o|--output)  OUTPUT_NAME="$2"; shift 2 ;;
+        -t|--title)   TITLE="$2";       shift 2 ;;
+        -a|--artist)  ARTIST="$2";      shift 2 ;;
+        -l|--album)   ALBUM="$2";       shift 2 ;;
+        -b|--bitrate) BITRATE="$2";     shift 2 ;;
+        -k|--keep)    KEEP=1;           shift ;;
+        --) shift; break ;;
+        *)  echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
 if [[ -z "$URL" ]]; then
-    echo "Usage: $(basename "$0") -u <url> [-o <output-name>] [-t <title>] [-a <artist>] [-l <album>] [-b <bitrate-kbps>] [-k]" >&2
+    echo "Usage: $(basename "$0") -u|--url <url> [-o|--output <name>] [-t|--title <title>] [-a|--artist <artist>] [-l|--album <album>] [-b|--bitrate <kbps>] [-k|--keep]" >&2
     exit 1
 fi
 
