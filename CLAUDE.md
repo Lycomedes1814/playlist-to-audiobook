@@ -21,7 +21,7 @@ External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
 
 ## File Map
 
-- `convert-yt-playlist-to-m4b.sh` — Bash implementation
+- `playlist-to-audiobook.sh` — Bash implementation
 
 ## Key Conventions
 
@@ -34,5 +34,5 @@ External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe` (must be on PATH).
 No test suite. Manual testing requires a real YouTube playlist URL and the external tools installed.
 
 ```bash
-./convert-yt-playlist-to-m4b.sh -u "<playlist-url>"
+./playlist-to-audiobook.sh -u "<playlist-url>"
 ```

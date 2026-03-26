@@ -1,4 +1,4 @@
-# PlaylistToM4b
+# playlist-to-audiobook
 
 Converts a YouTube playlist to a single M4B audiobook file with per-video chapter markers and cover art.
 
@@ -20,7 +20,7 @@ Both must be on your `PATH`.
 ## Usage
 
 ```bash
-./convert-yt-playlist-to-m4b.sh -u <playlist-url> [options]
+./playlist-to-audiobook.sh -u <playlist-url> [options]
 ```
 
 ## Options
@@ -39,10 +39,10 @@ Both must be on your `PATH`.
 
 ```bash
 # Minimal
-./convert-yt-playlist-to-m4b.sh -u "https://www.youtube.com/playlist?list=PLxxxxx"
+./playlist-to-audiobook.sh -u "https://www.youtube.com/playlist?list=PLxxxxx"
 
 # Custom metadata, 128 kbps, keep files
-./convert-yt-playlist-to-m4b.sh -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
+./playlist-to-audiobook.sh -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
 ```
 
 ## Output

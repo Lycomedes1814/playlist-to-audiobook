@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# convert-yt-playlist-to-m4b.sh
+# playlist-to-audiobook.sh
 # Converts a YouTube playlist to a single M4B audiobook file with chapters and cover art.
 #
 # Dependencies: yt-dlp, ffmpeg, ffprobe
 #
 # Usage:
-#   convert-yt-playlist-to-m4b.sh -u <url> [-o <output-name>] [-t <title>]
+#   playlist-to-audiobook.sh -u <url> [-o <output-name>] [-t <title>]
 #                                  [-a <artist>] [-l <album>] [-b <bitrate-kbps>]
 #                                  [-k] [-n]
 #
