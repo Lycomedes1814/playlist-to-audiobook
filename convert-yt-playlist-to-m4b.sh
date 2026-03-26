@@ -6,16 +6,18 @@
 #
 # Usage:
 #   convert-yt-playlist-to-m4b.sh -u <url> [-o <output-name>] [-t <title>]
-#                                  [-a <artist>] [-l <album>] [-b <bitrate-kbps>] [-k]
+#                                  [-a <artist>] [-l <album>] [-b <bitrate-kbps>]
+#                                  [-k] [-n]
 #
 # Options:
-#   -u, --url      URL of the YouTube playlist (required)
-#   -o, --output   Output filename (without extension); defaults to playlist title
-#   -t, --title    Title metadata tag; defaults to playlist title
-#   -a, --artist   Artist metadata tag; defaults to playlist uploader
-#   -l, --album    Album metadata tag; defaults to playlist title
-#   -b, --bitrate  Audio bitrate in kbps; defaults to 160
-#   -k, --keep     Keep downloaded files after encoding
+#   -u, --url            URL of the YouTube playlist (required)
+#   -o, --output         Output filename (without extension); defaults to playlist title
+#   -t, --title          Title metadata tag; defaults to playlist title
+#   -a, --artist         Artist metadata tag; defaults to playlist uploader
+#   -l, --album          Album metadata tag; defaults to playlist title
+#   -b, --bitrate        Audio bitrate in kbps; defaults to 160
+#   -k, --keep           Keep downloaded files after encoding
+#   -n, --no-normalize   Skip per-file audio normalization (EBU R128)
 
 set -euo pipefail
 
@@ -27,10 +29,11 @@ ARTIST=""
 ALBUM=""
 BITRATE=160
 KEEP=0
+NORMALIZE=1
 
 # ---------- parse args ----------
-PARSED=$(getopt -o u:o:t:a:l:b:k \
-    --long url:,output:,title:,artist:,album:,bitrate:,keep \
+PARSED=$(getopt -o u:o:t:a:l:b:kn \
+    --long url:,output:,title:,artist:,album:,bitrate:,keep,no-normalize \
     -n "$(basename "$0")" -- "$@") || exit 1
 eval set -- "$PARSED"
 
@@ -42,14 +45,15 @@ while true; do
         -a|--artist)  ARTIST="$2";      shift 2 ;;
         -l|--album)   ALBUM="$2";       shift 2 ;;
         -b|--bitrate) BITRATE="$2";     shift 2 ;;
-        -k|--keep)    KEEP=1;           shift ;;
+        -k|--keep)         KEEP=1;           shift ;;
+        -n|--no-normalize) NORMALIZE=0;      shift ;;
         --) shift; break ;;
         *)  echo "Unknown option: $1" >&2; exit 1 ;;
     esac
 done
 
 if [[ -z "$URL" ]]; then
-    echo "Usage: $(basename "$0") -u|--url <url> [-o|--output <name>] [-t|--title <title>] [-a|--artist <artist>] [-l|--album <album>] [-b|--bitrate <kbps>] [-k|--keep]" >&2
+    echo "Usage: $(basename "$0") -u|--url <url> [-o|--output <name>] [-t|--title <title>] [-a|--artist <artist>] [-l|--album <album>] [-b|--bitrate <kbps>] [-k|--keep] [-n|--no-normalize]" >&2
     exit 1
 fi
 
@@ -66,7 +70,7 @@ for cmd in yt-dlp ffmpeg ffprobe; do
 done
 
 # ---------- Step 1: playlist metadata ----------
-echo -e "\033[0;36m[1/5] Fetching playlist metadata...\033[0m"
+echo -e "\033[0;36m[1/6] Fetching playlist metadata...\033[0m"
 META=$(yt-dlp --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
     echo -e "  \033[0;33mWarning: Could not fetch playlist metadata, using defaults.\033[0m"
 }
@@ -91,7 +95,7 @@ COVER_JPG="$WORKDIR/cover.jpg"
 OUT_M4B="$(pwd)/${SAFE_OUTPUT_NAME}.m4b"
 
 # ---------- Step 2: download audio ----------
-echo -e "\033[0;36m[2/5] Downloading playlist audio...\033[0m"
+echo -e "\033[0;36m[2/6] Downloading playlist audio...\033[0m"
 yt-dlp \
     --yes-playlist \
     --no-overwrites \
@@ -102,8 +106,26 @@ yt-dlp \
     -o "$WORKDIR/%(playlist_index)03d - %(title)s.%(ext)s" \
     -- "$URL"
 
-# ---------- Step 3: concat list + chapter metadata ----------
-echo -e "\033[0;36m[3/5] Building concat list and chapter metadata...\033[0m"
+# ---------- Step 3: normalize audio ----------
+if [[ $NORMALIZE -eq 1 ]]; then
+    echo -e "\033[0;36m[3/6] Normalizing audio (EBU R128)...\033[0m"
+    for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
+        [[ -f "$FILE" ]] || continue
+        TMPFILE="${FILE}.norm.wav"
+        if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 "$TMPFILE" 2>/dev/null; then
+            mv "$TMPFILE" "$FILE"
+            echo -e "  \033[0;37mNormalized: $(basename "$FILE")\033[0m"
+        else
+            echo -e "  \033[0;33mWarning: Could not normalize $(basename "$FILE"), keeping original.\033[0m"
+            rm -f "$TMPFILE"
+        fi
+    done
+else
+    echo -e "\033[0;36m[3/6] Skipping audio normalization.\033[0m"
+fi
+
+# ---------- Step 4: concat list + chapter metadata ----------
+echo -e "\033[0;36m[4/6] Building concat list and chapter metadata...\033[0m"
 
 # Collect audio files sorted by name
 mapfile -t AUDIO_FILES < <(find "$WORKDIR" -maxdepth 1 -type f \
@@ -166,8 +188,8 @@ if [[ $HAS_CHAPTERS -eq 1 && ${#CHAPTER_LINES[@]} -gt 0 ]]; then
     echo -e "  \033[0;37mGenerated ${#AUDIO_FILES[@]} chapter marker(s).\033[0m"
 fi
 
-# ---------- Step 4: thumbnail ----------
-echo -e "\033[0;36m[4/5] Downloading thumbnail...\033[0m"
+# ---------- Step 5: thumbnail ----------
+echo -e "\033[0;36m[5/6] Downloading thumbnail...\033[0m"
 yt-dlp \
     --skip-download \
     --write-thumbnail \
@@ -182,8 +204,8 @@ if [[ $HAS_COVER -eq 0 ]]; then
     echo -e "  \033[0;33mNo thumbnail found, proceeding without cover art.\033[0m"
 fi
 
-# ---------- Step 5: encode M4B ----------
-echo -e "\033[0;36m[5/5] Encoding M4B...\033[0m"
+# ---------- Step 6: encode M4B ----------
+echo -e "\033[0;36m[6/6] Encoding M4B...\033[0m"
 
 # Build inputs first, then output options (ffmpeg requires all -i before output flags)
 FFMPEG_ARGS=(-y -f concat -safe 0 -i "$LIST_TXT")
