@@ -41,7 +41,7 @@ All must be on your `PATH`.
 | `-l, --album` | Playlist title | Album metadata tag |
 | `-b, --bitrate` | `160` | Audio bitrate in kbps |
 | `-c, --cover` | Playlist thumbnail | Path to a local cover image |
-| `--items` | All | Playlist item range (e.g. `1-5`, `2,4,6`) |
+| `-i, --items` | All | Playlist item range (e.g. `1-5`, `2,4,6`) |
 | `--chapter-gap` | `0` | Seconds of silence between chapters |
 | `-k, --keep` | off | Keep intermediate downloaded files |
 | `-n, --no-normalize` | off | Skip EBU R128 audio normalization |
@@ -63,7 +63,7 @@ All must be on your `PATH`.
 ./playlist-to-audiobook.sh -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
 
 # First 5 videos, custom cover, 2s chapter gaps, output to ~/audiobooks
-./playlist-to-audiobook.sh -u "https://..." --items "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
+./playlist-to-audiobook.sh -u "https://..." -i "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
 
 # Preview without downloading
 ./playlist-to-audiobook.sh -u "https://..." --dry-run

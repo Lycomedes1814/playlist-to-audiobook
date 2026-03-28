@@ -8,7 +8,7 @@
 #   playlist-to-audiobook.sh -u <url> [-o <output-name>] [-d <output-dir>]
 #                            [-t <title>] [-a <artist>] [-l <album>]
 #                            [-b <bitrate-kbps>] [-c <cover-image>]
-#                            [--items <range>] [--chapter-gap <seconds>]
+#                            [-i <range>] [--chapter-gap <seconds>]
 #                            [-k] [-n] [-v] [-q] [--dry-run]
 #
 # Options:
@@ -20,7 +20,7 @@
 #   -l, --album          Album metadata tag; defaults to playlist title
 #   -b, --bitrate        Audio bitrate in kbps; defaults to 160
 #   -c, --cover          Path to a local image file to use as cover art
-#   --items              Playlist item range (e.g. "1-5", "2,4,6"); passed to yt-dlp
+#   -i, --items          Playlist item range (e.g. "1-5", "2,4,6"); passed to yt-dlp
 #   --chapter-gap        Seconds of silence to insert between chapters; defaults to 0
 #   -k, --keep           Keep downloaded files after encoding
 #   -n, --no-normalize   Skip per-file audio normalization (EBU R128)
@@ -45,7 +45,7 @@ Options:
   -l, --album ALBUM      Album metadata tag (default: playlist title)
   -b, --bitrate KBPS     Audio bitrate in kbps (default: 160)
   -c, --cover FILE       Local image to use as cover art
-  --items RANGE           Playlist items to download (e.g. "1-5", "2,4,6")
+  -i, --items RANGE      Playlist items to download (e.g. "1-5", "2,4,6")
   --chapter-gap SECONDS   Silence to insert between chapters (default: 0)
   -k, --keep             Keep intermediate files after encoding
   -n, --no-normalize     Skip EBU R128 audio normalization
@@ -78,7 +78,7 @@ CHAPTER_GAP=0
 OUTPUT_SAMPLE_RATE=48000
 
 # ---------- parse args ----------
-PARSED=$(getopt -o u:o:d:t:a:l:b:c:knvqh \
+PARSED=$(getopt -o u:o:d:t:a:l:b:c:i:knvqh \
     --long url:,output:,output-dir:,title:,artist:,album:,bitrate:,cover:,items:,chapter-gap:,keep,no-normalize,verbose,quiet,dry-run,help \
     -n "$(basename "$0")" -- "$@") || exit 1
 eval set -- "$PARSED"
@@ -93,7 +93,7 @@ while true; do
         -l|--album)        ALBUM="$2";       shift 2 ;;
         -b|--bitrate)      BITRATE="$2";     shift 2 ;;
         -c|--cover)        COVER="$2";       shift 2 ;;
-        --items)           ITEMS="$2";       shift 2 ;;
+        -i|--items)        ITEMS="$2";       shift 2 ;;
         --chapter-gap)     CHAPTER_GAP="$2"; shift 2 ;;
         -k|--keep)         KEEP=1;           shift ;;
         -n|--no-normalize) NORMALIZE=0;      shift ;;
