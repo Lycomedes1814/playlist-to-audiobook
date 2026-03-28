@@ -140,10 +140,10 @@ done
 
 # ---------- helpers ----------
 # Logging helpers that respect -q/--quiet
-log_step() { [[ $QUIET -eq 0 ]] && echo -e "\033[0;36m$1\033[0m" || true; }
-log_info() { [[ $QUIET -eq 0 ]] && echo -e "  \033[0;37m$1\033[0m" || true; }
+log_step() { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;36m$1\033[0m"; fi; }
+log_info() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;37m$1\033[0m"; fi; }
 log_warn() { echo -e "  \033[0;33mWarning: $1\033[0m" >&2; }
-log_ok()   { [[ $QUIET -eq 0 ]] && echo -e "\033[0;32m$1\033[0m" || true; }
+log_ok()   { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;32m$1\033[0m"; fi; }
 
 # Redirect target for yt-dlp/ffmpeg output based on verbosity
 if [[ $VERBOSE -eq 1 ]]; then
@@ -247,8 +247,8 @@ if [[ $NORMALIZE -eq 1 ]]; then
     for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
         BASENAME=$(basename "$FILE")
         EXT="${FILE##*.}"
-        WAVFILE="${FILE%.${EXT}}.wav"
-        TMPFILE="${FILE%.${EXT}}.norm.wav"
+        WAVFILE="${FILE%."${EXT}"}.wav"
+        TMPFILE="${FILE%."${EXT}"}.norm.wav"
 
         # Resume: skip if already normalized, or if a normalized wav sibling exists
         # (the lossy original may have been re-downloaded by yt-dlp)
@@ -277,7 +277,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
                 mv "$TMPFILE" "$WAVFILE"
                 [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
                 echo "$BASENAME" >> "$NORM_DONE_MARKER"
-                echo "$(basename "$WAVFILE")" >> "$NORM_DONE_MARKER"
+                basename "$WAVFILE" >> "$NORM_DONE_MARKER"
                 log_info "Normalized (single-pass): $BASENAME"
             else
                 log_warn "Could not normalize $BASENAME, keeping original."
@@ -293,7 +293,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
             mv "$TMPFILE" "$WAVFILE"
             [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
             echo "$BASENAME" >> "$NORM_DONE_MARKER"
-            echo "$(basename "$WAVFILE")" >> "$NORM_DONE_MARKER"
+            basename "$WAVFILE" >> "$NORM_DONE_MARKER"
             log_info "Normalized: $BASENAME"
         else
             log_warn "Could not normalize $BASENAME, keeping original."
@@ -330,7 +330,7 @@ if [[ ${#AUDIO_FILES[@]} -eq 0 ]]; then
 fi
 log_info "Found ${#AUDIO_FILES[@]} audio file(s)."
 
-> "$LIST_TXT"
+: > "$LIST_TXT"
 CHAPTER_LINES=()
 CUMULATIVE_MS=0
 HAS_CHAPTERS=1
@@ -367,7 +367,8 @@ for i in "${!AUDIO_FILES[@]}"; do
     # Strip leading index and extension to get chapter title
     BASENAME=$(basename "$FILE")
     CHAPTER_TITLE="${BASENAME%.*}"
-    CHAPTER_TITLE=$(echo "$CHAPTER_TITLE" | sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//')
+    # shellcheck disable=SC2001
+    CHAPTER_TITLE=$(sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//' <<< "$CHAPTER_TITLE")
     # Escape special characters for ffmetadata format
     CHAPTER_TITLE="${CHAPTER_TITLE//\\/\\\\}"
     CHAPTER_TITLE="${CHAPTER_TITLE//=/\\=}"
