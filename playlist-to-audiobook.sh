@@ -238,7 +238,15 @@ cleanup() {
         rm -rf "$WORKDIR"
     fi
 }
+
+handle_interrupt() {
+    trap - INT TERM
+    echo "Error: Interrupted." >&2
+    exit 130
+}
+
 trap cleanup EXIT
+trap handle_interrupt INT TERM
 
 # ---------- dry-run: show plan and exit ----------
 if [[ $DRY_RUN -eq 1 ]]; then
@@ -277,11 +285,18 @@ else
 fi
 
 DOWNLOAD_STATUS=0
-if ! yt-dlp "${YTDLP_ARGS[@]}" -- "$URL" > "$REDIR" 2>&1; then
+if yt-dlp "${YTDLP_ARGS[@]}" -- "$URL" > "$REDIR" 2>&1; then
+    :
+else
     DOWNLOAD_STATUS=$?
 fi
 
 if [[ $DOWNLOAD_STATUS -ne 0 ]]; then
+    if [[ $DOWNLOAD_STATUS -eq 130 || $DOWNLOAD_STATUS -eq 143 ]]; then
+        echo "Error: Download interrupted." >&2
+        exit 130
+    fi
+
     mapfile -t PARTIAL_AUDIO_FILES < <(find "$WORKDIR" -maxdepth 1 -type f \
         \( -name "*.webm" -o -name "*.opus" -o -name "*.m4a" \
            -o -name "*.mp3"  -o -name "*.ogg"  -o -name "*.wav" \
