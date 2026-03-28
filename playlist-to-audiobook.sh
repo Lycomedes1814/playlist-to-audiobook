@@ -255,6 +255,17 @@ if [[ $NORMALIZE -eq 1 ]]; then
         EXT="${FILE##*.}"
         TMPFILE="${FILE%.${EXT}}.norm.${EXT}"
 
+        # Probe source bitrate so the normalized file doesn't lose quality
+        # Try stream-level first, fall back to format-level (opus reports N/A at stream level)
+        SRC_BR=$(ffprobe -v error -show_entries stream=bit_rate -of csv=p=0 -- "$FILE" 2>/dev/null | tr -d '[:space:]')
+        if [[ -z "$SRC_BR" || "$SRC_BR" == "N/A" ]]; then
+            SRC_BR=$(ffprobe -v error -show_entries format=bit_rate -of csv=p=0 -- "$FILE" 2>/dev/null | tr -d '[:space:]')
+        fi
+        BR_ARGS=()
+        if [[ -n "$SRC_BR" && "$SRC_BR" =~ ^[0-9]+$ && "$SRC_BR" -gt 0 ]]; then
+            BR_ARGS+=(-b:a "${SRC_BR}")
+        fi
+
         # Pass 1: measure loudness stats
         STATS=$(ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1 \
             | tail -n 12) || true
@@ -266,7 +277,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
         if [[ -z "$INPUT_I" || -z "$INPUT_TP" || -z "$INPUT_LRA" || -z "$INPUT_THRESH" ]]; then
             # Fallback to single-pass if measurement fails
             log_warn "Two-pass measurement failed for $BASENAME, trying single-pass."
-            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 "$TMPFILE" > "$REDIR" 2>&1; then
+            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 "${BR_ARGS[@]}" "$TMPFILE" > "$REDIR" 2>&1; then
                 mv "$TMPFILE" "$FILE"
                 echo "$BASENAME" >> "$NORM_DONE_MARKER"
                 log_info "Normalized (single-pass): $BASENAME"
@@ -280,7 +291,7 @@ if [[ $NORMALIZE -eq 1 ]]; then
         # Pass 2: apply measured values
         if ffmpeg -y -i "$FILE" -af \
             "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${INPUT_I}:measured_TP=${INPUT_TP}:measured_LRA=${INPUT_LRA}:measured_thresh=${INPUT_THRESH}:linear=true" \
-            "$TMPFILE" > "$REDIR" 2>&1; then
+            "${BR_ARGS[@]}" "$TMPFILE" > "$REDIR" 2>&1; then
             mv "$TMPFILE" "$FILE"
             echo "$BASENAME" >> "$NORM_DONE_MARKER"
             log_info "Normalized: $BASENAME"
