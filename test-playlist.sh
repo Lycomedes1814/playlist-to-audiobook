@@ -68,6 +68,14 @@ assert_contains() {
     grep -Fq -- "$needle" "$file" || fail "Expected '$file' to contain: $needle"
 }
 
+assert_all_list_entries_absolute() {
+    local file="$1"
+
+    while IFS= read -r line; do
+        [[ "$line" =~ ^file\ \'/.+\'$ ]] || fail "Expected absolute concat entry in $file, got: $line"
+    done < "$file"
+}
+
 assert_ffprobe_value() {
     local file="$1"
     local entry="$2"
@@ -204,6 +212,7 @@ assert_file_exists "$NORMALIZED_WORKDIR/_silence.wav"
 assert_file_exists "$NORMALIZED_WORKDIR/.prep_done"
 assert_chapter_count "$NORMALIZED_WORKDIR/chapters.txt" 2
 assert_contains "_silence.wav" "$NORMALIZED_WORKDIR/list.txt"
+assert_all_list_entries_absolute "$NORMALIZED_WORKDIR/list.txt"
 assert_prep_marker_pairs "$NORMALIZED_WORKDIR/.prep_done" 2
 for wav in "$NORMALIZED_WORKDIR"/*.wav; do
     assert_ffprobe_value "$wav" sample_rate 48000
@@ -233,6 +242,7 @@ assert_file_exists "$NO_NORM_WORKDIR/chapters.txt"
 assert_file_exists "$NO_NORM_WORKDIR/.prep_done"
 assert_chapter_count "$NO_NORM_WORKDIR/chapters.txt" 2
 assert_not_exists "$NO_NORM_WORKDIR/_silence.wav"
+assert_all_list_entries_absolute "$NO_NORM_WORKDIR/list.txt"
 assert_prep_marker_pairs "$NO_NORM_WORKDIR/.prep_done" 2
 assert_not_exists "$NO_NORM_WORKDIR/001 - Edvard Grieg – Lyric Pieces.opus"
 assert_not_exists "$NO_NORM_WORKDIR/002 - J. S. Bach – Prelude in C Major.opus"
@@ -240,5 +250,25 @@ for wav in "$NO_NORM_WORKDIR"/*.wav; do
     assert_ffprobe_value "$wav" sample_rate 48000
     assert_ffprobe_value "$wav" channels 2
 done
+
+info "Relative output directories should also produce absolute concat paths and a valid M4B"
+RELATIVE_DIR="test-output/relative-output"
+mkdir -p "$RELATIVE_DIR"
+RELATIVE_LOG="$RELATIVE_DIR/run.log"
+run_expect_success "$RELATIVE_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$RELATIVE_DIR" \
+    -o "relative-case" \
+    -i "1-2" \
+    -n \
+    -k
+RELATIVE_OUT="$RELATIVE_DIR/relative-case.m4b"
+RELATIVE_WORKDIR=$(find_workdir "$RELATIVE_DIR" "relative-case")
+assert_file_exists "$RELATIVE_OUT"
+assert_file_exists "$RELATIVE_WORKDIR/list.txt"
+assert_file_exists "$RELATIVE_WORKDIR/chapters.txt"
+assert_all_list_entries_absolute "$RELATIVE_WORKDIR/list.txt"
+assert_chapter_count "$RELATIVE_WORKDIR/chapters.txt" 2
 
 info "All tests passed"

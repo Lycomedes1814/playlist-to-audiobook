@@ -251,6 +251,7 @@ if [[ $IS_PLAYLIST -eq 1 && -n "$ITEMS" ]]; then
 fi
 
 BASE_DIR="${OUTPUT_DIR:-$(pwd)}"
+BASE_DIR=$(cd "$BASE_DIR" && pwd)
 # Sanitize filename
 SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*'"'" '_')
 WORKDIR=$(mktemp -d "${BASE_DIR}/${SAFE_OUTPUT_NAME}.work.XXXXXX")
