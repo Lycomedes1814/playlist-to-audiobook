@@ -76,6 +76,7 @@ QUIET=0
 DRY_RUN=0
 CHAPTER_GAP=0
 OUTPUT_SAMPLE_RATE=48000
+OUTPUT_CHANNELS=2
 
 # ---------- parse args ----------
 PARSED=$(getopt -o u:o:d:t:a:l:b:c:i:knvqh \
@@ -143,7 +144,7 @@ done
 # Logging helpers that respect -q/--quiet
 log_step() { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;36m$1\033[0m"; fi; }
 log_info() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;37m$1\033[0m"; fi; }
-log_warn() { echo -e "  \033[0;33mWarning: $1\033[0m" >&2; }
+log_warn() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;33mWarning: $1\033[0m" >&2; fi; }
 log_ok()   { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;32m$1\033[0m"; fi; }
 
 count_requested_items() {
@@ -176,11 +177,36 @@ count_requested_items() {
 }
 
 # Redirect target for yt-dlp/ffmpeg output based on verbosity
-if [[ $VERBOSE -eq 1 ]]; then
+if [[ $QUIET -eq 1 ]]; then
+    REDIR="/dev/null"
+elif [[ $VERBOSE -eq 1 ]]; then
     REDIR="/dev/stdout"
 else
     REDIR="/dev/null"
 fi
+
+extract_loudnorm_field() {
+    local stats="$1"
+    local field="$2"
+
+    printf '%s' "$stats" | python3 -c '
+import json
+import re
+import sys
+
+field = sys.argv[1]
+text = sys.stdin.read()
+match = re.search(r"\{[\s\S]*\}", text)
+if not match:
+    raise SystemExit(1)
+
+data = json.loads(match.group(0))
+value = data.get(field, "")
+if value in ("", None):
+    raise SystemExit(1)
+print(value)
+' "$field" 2>/dev/null
+}
 
 # ---------- Step 1: playlist/video metadata ----------
 log_step "[1/6] Fetching metadata..."
@@ -311,71 +337,88 @@ if [[ $DOWNLOAD_STATUS -ne 0 ]]; then
     log_warn "yt-dlp reported errors; continuing with ${#PARTIAL_AUDIO_FILES[@]} downloaded file(s). Some playlist items may be unavailable."
 fi
 
-# ---------- Step 3: normalize audio (two-pass EBU R128) ----------
+# ---------- Step 3: prepare audio for concatenation ----------
 if [[ $NORMALIZE -eq 1 ]]; then
     log_step "[3/6] Normalizing audio (two-pass EBU R128)..."
-    NORM_DONE_MARKER="$WORKDIR/.norm_done"
-    shopt -s nullglob
-    for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
-        BASENAME=$(basename "$FILE")
-        EXT="${FILE##*.}"
-        WAVFILE="${FILE%."${EXT}"}.wav"
-        TMPFILE="${FILE%."${EXT}"}.norm.wav"
+else
+    log_step "[3/6] Converting audio to a concat-safe intermediate format..."
+fi
 
-        # Resume: skip if already normalized, or if a normalized wav sibling exists
-        # (the lossy original may have been re-downloaded by yt-dlp)
-        if [[ "$EXT" != "wav" && -f "$WAVFILE" ]]; then
-            log_info "Removing re-downloaded $BASENAME (normalized wav exists)"
-            rm -f "$FILE"
-            continue
-        fi
-        if [[ -f "$NORM_DONE_MARKER" ]] && grep -qxF "$BASENAME" "$NORM_DONE_MARKER"; then
-            log_info "Already normalized: $BASENAME"
-            continue
-        fi
+PREP_DONE_MARKER="$WORKDIR/.prep_done"
+shopt -s nullglob
+for FILE in "$WORKDIR"/*.{webm,opus,m4a,mp3,ogg,wav,flac,aac}; do
+    BASENAME=$(basename "$FILE")
+    EXT="${FILE##*.}"
+    WAVFILE="${FILE%."${EXT}"}.wav"
+    TMPFILE="${FILE%."${EXT}"}.prep.wav"
 
+    # Resume: skip if already converted, or if a prepared wav sibling exists
+    # (the lossy original may have been re-downloaded by yt-dlp)
+    if [[ "$EXT" != "wav" && -f "$WAVFILE" ]]; then
+        log_info "Removing re-downloaded $BASENAME (prepared wav exists)"
+        rm -f "$FILE"
+        continue
+    fi
+    if [[ -f "$PREP_DONE_MARKER" ]] && grep -qxF "$BASENAME" "$PREP_DONE_MARKER"; then
+        log_info "Already prepared: $BASENAME"
+        continue
+    fi
+
+    if [[ $NORMALIZE -eq 1 ]]; then
         # Pass 1: measure loudness stats
-        STATS=$(ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1 \
-            | tail -n 12) || true
-        INPUT_I=$(echo "$STATS" | grep -o '"input_i" *: *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-        INPUT_TP=$(echo "$STATS" | grep -o '"input_tp" *: *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-        INPUT_LRA=$(echo "$STATS" | grep -o '"input_lra" *: *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
-        INPUT_THRESH=$(echo "$STATS" | grep -o '"input_thresh" *: *"[^"]*"' | grep -o '"[^"]*"$' | tr -d '"')
+        STATS=$(ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json -f null /dev/null 2>&1) || true
+        INPUT_I=$(extract_loudnorm_field "$STATS" "input_i" || true)
+        INPUT_TP=$(extract_loudnorm_field "$STATS" "input_tp" || true)
+        INPUT_LRA=$(extract_loudnorm_field "$STATS" "input_lra" || true)
+        INPUT_THRESH=$(extract_loudnorm_field "$STATS" "input_thresh" || true)
 
         if [[ -z "$INPUT_I" || -z "$INPUT_TP" || -z "$INPUT_LRA" || -z "$INPUT_THRESH" ]]; then
             # Fallback to single-pass if measurement fails
             log_warn "Two-pass measurement failed for $BASENAME, trying single-pass."
-            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 -ar "$OUTPUT_SAMPLE_RATE" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            if ffmpeg -y -i "$FILE" -af loudnorm=I=-16:TP=-1.5:LRA=11 \
+                -ar "$OUTPUT_SAMPLE_RATE" -ac "$OUTPUT_CHANNELS" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
                 mv "$TMPFILE" "$WAVFILE"
                 [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
-                echo "$BASENAME" >> "$NORM_DONE_MARKER"
-                basename "$WAVFILE" >> "$NORM_DONE_MARKER"
+                echo "$BASENAME" >> "$PREP_DONE_MARKER"
+                basename "$WAVFILE" >> "$PREP_DONE_MARKER"
                 log_info "Normalized (single-pass): $BASENAME"
             else
-                log_warn "Could not normalize $BASENAME, keeping original."
+                echo "Error: Could not normalize $BASENAME." >&2
                 rm -f "$TMPFILE"
+                exit 1
             fi
             continue
         fi
 
-        # Pass 2: apply measured values (output lossless WAV to avoid double lossy compression)
+        # Pass 2: apply measured values and produce a uniform WAV intermediate.
         if ffmpeg -y -i "$FILE" -af \
             "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${INPUT_I}:measured_TP=${INPUT_TP}:measured_LRA=${INPUT_LRA}:measured_thresh=${INPUT_THRESH}:linear=true" \
-            -ar "$OUTPUT_SAMPLE_RATE" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            -ar "$OUTPUT_SAMPLE_RATE" -ac "$OUTPUT_CHANNELS" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
             mv "$TMPFILE" "$WAVFILE"
             [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
-            echo "$BASENAME" >> "$NORM_DONE_MARKER"
-            basename "$WAVFILE" >> "$NORM_DONE_MARKER"
+            echo "$BASENAME" >> "$PREP_DONE_MARKER"
+            basename "$WAVFILE" >> "$PREP_DONE_MARKER"
             log_info "Normalized: $BASENAME"
         else
-            log_warn "Could not normalize $BASENAME, keeping original."
+            echo "Error: Could not normalize $BASENAME." >&2
             rm -f "$TMPFILE"
+            exit 1
         fi
-    done
-    shopt -u nullglob
-else
-    log_step "[3/6] Skipping audio normalization."
-fi
+    else
+        if ffmpeg -y -i "$FILE" -ar "$OUTPUT_SAMPLE_RATE" -ac "$OUTPUT_CHANNELS" -c:a pcm_s16le "$TMPFILE" > "$REDIR" 2>&1; then
+            mv "$TMPFILE" "$WAVFILE"
+            [[ "$FILE" != "$WAVFILE" ]] && rm -f "$FILE"
+            echo "$BASENAME" >> "$PREP_DONE_MARKER"
+            basename "$WAVFILE" >> "$PREP_DONE_MARKER"
+            log_info "Prepared: $BASENAME"
+        else
+            echo "Error: Could not convert $BASENAME to the intermediate WAV format." >&2
+            rm -f "$TMPFILE"
+            exit 1
+        fi
+    fi
+done
+shopt -u nullglob
 
 # ---------- Step 4: concat list + chapter metadata ----------
 log_step "[4/6] Building concat list and chapter metadata..."
@@ -386,7 +429,8 @@ SILENCE_FILE=""
 if [[ $(awk -v g="$CHAPTER_GAP" 'BEGIN { print (g > 0) }') -eq 1 ]]; then
     GAP_MS=$(awk -v g="$CHAPTER_GAP" 'BEGIN { printf "%d", g * 1000 }')
     SILENCE_FILE="$WORKDIR/_silence.wav"
-    ffmpeg -y -f lavfi -i "anullsrc=r=44100:cl=mono" -t "$CHAPTER_GAP" "$SILENCE_FILE" > "$REDIR" 2>&1
+    ffmpeg -y -f lavfi -i "anullsrc=r=${OUTPUT_SAMPLE_RATE}:cl=stereo" -t "$CHAPTER_GAP" \
+        -ar "$OUTPUT_SAMPLE_RATE" -ac "$OUTPUT_CHANNELS" -c:a pcm_s16le "$SILENCE_FILE" > "$REDIR" 2>&1
 fi
 
 # Collect audio files sorted by name
