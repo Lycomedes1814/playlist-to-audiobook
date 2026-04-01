@@ -15,10 +15,11 @@ Runs a small integration test suite against:
   $TEST_URL
 
 The suite covers:
-  - dry-run behavior
+  - dry-run behavior (combined and split modes)
   - invalid argument failures
   - normalized end-to-end conversion with chapter gaps
   - no-normalize conversion path
+  - split mode (one M4B per item, per-item cover art)
   - expected properties of kept temp files
 
 Outputs are written under:
@@ -94,6 +95,22 @@ assert_chapter_count() {
 
     actual=$(grep -c '^\[CHAPTER\]$' "$file")
     assert_eq "$expected" "$actual" "Unexpected chapter count in $file"
+}
+
+assert_m4b_count() {
+    local dir="$1"
+    local expected="$2"
+    local actual
+    actual=$(find "$dir" -maxdepth 1 -name "*.m4b" | wc -l | tr -d '[:space:]')
+    assert_eq "$expected" "$actual" "Unexpected M4B count in $dir"
+}
+
+assert_m4b_audio_valid() {
+    local file="$1"
+    local codec
+    codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name \
+        -of default=noprint_wrappers=1:nokey=1 -- "$file" 2>/dev/null)
+    [[ "$codec" == "aac" ]] || fail "Expected AAC audio in $file, got: $codec"
 }
 
 assert_prep_marker_pairs() {
@@ -270,5 +287,57 @@ assert_file_exists "$RELATIVE_WORKDIR/list.txt"
 assert_file_exists "$RELATIVE_WORKDIR/chapters.txt"
 assert_all_list_entries_absolute "$RELATIVE_WORKDIR/list.txt"
 assert_chapter_count "$RELATIVE_WORKDIR/chapters.txt" 2
+
+info "Split dry-run should report split mode and output dir, not a single output file"
+SPLIT_DRY_DIR="$TEST_ROOT/split-dry-run"
+mkdir -p "$SPLIT_DRY_DIR"
+SPLIT_DRY_LOG="$SPLIT_DRY_DIR/run.log"
+run_expect_success "$SPLIT_DRY_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$SPLIT_DRY_DIR" \
+    -s \
+    --dry-run
+assert_contains "split (one M4B per item)" "$SPLIT_DRY_LOG"
+assert_contains "Output dir:" "$SPLIT_DRY_LOG"
+assert_m4b_count "$SPLIT_DRY_DIR" 0
+
+info "Split normalized run should produce one M4B per item with per-item thumbnails"
+SPLIT_NORM_DIR="$TEST_ROOT/split-normalized"
+mkdir -p "$SPLIT_NORM_DIR"
+SPLIT_NORM_LOG="$SPLIT_NORM_DIR/run.log"
+run_expect_success "$SPLIT_NORM_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$SPLIT_NORM_DIR" \
+    -o "split-norm-case" \
+    -i "1-2" \
+    -s \
+    -k
+assert_m4b_count "$SPLIT_NORM_DIR" 2
+SPLIT_NORM_WORKDIR=$(find_workdir "$SPLIT_NORM_DIR" "split-norm-case")
+# Per-item thumbnails should have been downloaded into workdir
+THUMB_COUNT=$(find "$SPLIT_NORM_WORKDIR" -maxdepth 1 -name "*.jpg" | wc -l | tr -d '[:space:]')
+[[ "$THUMB_COUNT" -ge 1 ]] || fail "Expected at least one per-item thumbnail in $SPLIT_NORM_WORKDIR"
+# Each M4B should contain valid AAC audio
+for m4b in "$SPLIT_NORM_DIR"/*.m4b; do
+    assert_m4b_audio_valid "$m4b"
+done
+
+info "Split no-normalize run should also produce one M4B per item"
+SPLIT_NONORM_DIR="$TEST_ROOT/split-no-normalize"
+mkdir -p "$SPLIT_NONORM_DIR"
+SPLIT_NONORM_LOG="$SPLIT_NONORM_DIR/run.log"
+run_expect_success "$SPLIT_NONORM_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$SPLIT_NONORM_DIR" \
+    -i "1-2" \
+    -s \
+    -n
+assert_m4b_count "$SPLIT_NONORM_DIR" 2
+for m4b in "$SPLIT_NONORM_DIR"/*.m4b; do
+    assert_m4b_audio_valid "$m4b"
+done
 
 info "All tests passed"
