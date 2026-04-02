@@ -6,13 +6,18 @@ SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.sh"
 TEST_URL="https://www.youtube.com/playlist?list=PLTTyjqCYL18SZ7KGzttmuhjrWl2eb6SjY"
 TEST_ROOT="$SCRIPT_DIR/test-output"
+VERBOSE=0
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0")
+Usage: $(basename "$0") [-v|--verbose]
 
 Runs a small integration test suite against:
   $TEST_URL
+
+Options:
+  -v, --verbose   Show command output and assertion details
+  -h, --help      Show this help message
 
 The suite covers:
   - input validation (missing URL, bad bitrate, bad chapter-gap, missing dir/cover, help)
@@ -31,14 +36,21 @@ Outputs are written under:
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    usage
-    exit 0
-fi
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        -v|--verbose) VERBOSE=1; shift ;;
+        *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+    esac
+done
 
 fail() {
     echo "FAIL: $*" >&2
     exit 1
+}
+
+verbose() {
+    [[ "$VERBOSE" -eq 1 ]] && echo "    $*" || true
 }
 
 info() {
@@ -48,16 +60,19 @@ info() {
 assert_file_exists() {
     local path="$1"
     [[ -f "$path" ]] || fail "Expected file to exist: $path"
+    verbose "OK: file exists: $path"
 }
 
 assert_dir_exists() {
     local path="$1"
     [[ -d "$path" ]] || fail "Expected directory to exist: $path"
+    verbose "OK: dir exists: $path"
 }
 
 assert_not_exists() {
     local path="$1"
     [[ ! -e "$path" ]] || fail "Expected path to be absent: $path"
+    verbose "OK: absent: $path"
 }
 
 assert_eq() {
@@ -65,12 +80,14 @@ assert_eq() {
     local actual="$2"
     local message="$3"
     [[ "$expected" == "$actual" ]] || fail "$message (expected '$expected', got '$actual')"
+    verbose "OK: $message ('$actual')"
 }
 
 assert_contains() {
     local needle="$1"
     local file="$2"
     grep -Fq -- "$needle" "$file" || fail "Expected '$file' to contain: $needle"
+    verbose "OK: '$file' contains: $needle"
 }
 
 assert_all_list_entries_absolute() {
@@ -79,6 +96,7 @@ assert_all_list_entries_absolute() {
     while IFS= read -r line; do
         [[ "$line" =~ ^file\ \'/.+\'$ ]] || fail "Expected absolute concat entry in $file, got: $line"
     done < "$file"
+    verbose "OK: all concat entries absolute in $file"
 }
 
 assert_ffprobe_value() {
@@ -89,7 +107,7 @@ assert_ffprobe_value() {
 
     actual=$(ffprobe -v error -select_streams a:0 -show_entries "stream=$entry" -of default=noprint_wrappers=1:nokey=1 -- "$file")
     [[ -n "$actual" ]] || fail "ffprobe returned no value for $entry on $file"
-    assert_eq "$expected" "$actual" "Unexpected ffprobe $entry for $file"
+    assert_eq "$expected" "$actual" "ffprobe $entry for $(basename "$file")"
 }
 
 assert_chapter_count() {
@@ -98,7 +116,7 @@ assert_chapter_count() {
     local actual
 
     actual=$(grep -c '^\[CHAPTER\]$' "$file")
-    assert_eq "$expected" "$actual" "Unexpected chapter count in $file"
+    assert_eq "$expected" "$actual" "chapter count in $file"
 }
 
 assert_m4b_count() {
@@ -106,7 +124,7 @@ assert_m4b_count() {
     local expected="$2"
     local actual
     actual=$(find "$dir" -maxdepth 1 -name "*.m4b" | wc -l | tr -d '[:space:]')
-    assert_eq "$expected" "$actual" "Unexpected M4B count in $dir"
+    assert_eq "$expected" "$actual" "M4B count in $dir"
 }
 
 assert_m4b_audio_valid() {
@@ -115,6 +133,7 @@ assert_m4b_audio_valid() {
     codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name \
         -of default=noprint_wrappers=1:nokey=1 -- "$file" 2>/dev/null)
     [[ "$codec" == "aac" ]] || fail "Expected AAC audio in $file, got: $codec"
+    verbose "OK: valid AAC audio in $(basename "$file")"
 }
 
 assert_prep_marker_pairs() {
@@ -123,7 +142,7 @@ assert_prep_marker_pairs() {
     local lines
 
     lines=$(wc -l < "$marker" | tr -d '[:space:]')
-    assert_eq "$(( expected_audio_files * 2 ))" "$lines" "Unexpected prep marker entry count in $marker"
+    assert_eq "$(( expected_audio_files * 2 ))" "$lines" "prep marker entry count in $marker"
 }
 
 assert_m4b_metadata() {
@@ -134,7 +153,7 @@ assert_m4b_metadata() {
     actual=$(ffprobe -v error -show_entries format_tags="$key" \
         -of default=noprint_wrappers=1:nokey=1 -- "$file" 2>/dev/null)
     [[ -n "$actual" ]] || fail "No metadata tag '$key' found in $file"
-    assert_eq "$expected" "$actual" "Unexpected metadata '$key' in $file"
+    assert_eq "$expected" "$actual" "metadata '$key' in $(basename "$file")"
 }
 
 assert_m4b_has_cover() {
@@ -143,6 +162,7 @@ assert_m4b_has_cover() {
     vstreams=$(ffprobe -v error -select_streams v -show_entries stream=codec_type \
         -of default=noprint_wrappers=1:nokey=1 -- "$file" 2>/dev/null | wc -l | tr -d '[:space:]')
     [[ "$vstreams" -ge 1 ]] || fail "Expected cover art (video stream) in $file"
+    verbose "OK: cover art present in $(basename "$file")"
 }
 
 assert_m4b_chapter_count() {
@@ -151,7 +171,7 @@ assert_m4b_chapter_count() {
     local actual
     actual=$(ffprobe -v error -show_chapters -- "$file" 2>/dev/null \
         | grep -c '^\[CHAPTER\]' || true)
-    assert_eq "$expected" "$actual" "Unexpected M4B chapter count in $file"
+    assert_eq "$expected" "$actual" "M4B chapter count in $(basename "$file")"
 }
 
 assert_no_workdir() {
@@ -164,6 +184,7 @@ assert_no_workdir() {
     shopt -u nullglob
 
     [[ ${#matches[@]} -eq 0 ]] || fail "Expected workdir to be cleaned up, but found: ${matches[*]}"
+    verbose "OK: workdir cleaned up for $output_name in $dir"
 }
 
 find_workdir() {
@@ -183,9 +204,13 @@ run_expect_success() {
     local logfile="$1"
     shift
 
+    verbose "RUN: $*"
     if ! "$@" >"$logfile" 2>&1; then
         cat "$logfile" >&2
         fail "Command failed: $*"
+    fi
+    if [[ "$VERBOSE" -eq 1 ]]; then
+        sed 's/^/    | /' "$logfile"
     fi
 }
 
@@ -193,9 +218,13 @@ run_expect_failure() {
     local logfile="$1"
     shift
 
+    verbose "RUN (expect fail): $*"
     if "$@" >"$logfile" 2>&1; then
         cat "$logfile" >&2
         fail "Command unexpectedly succeeded: $*"
+    fi
+    if [[ "$VERBOSE" -eq 1 ]]; then
+        sed 's/^/    | /' "$logfile"
     fi
 }
 
