@@ -13,7 +13,7 @@ Converts a YouTube playlist (or single video) into one or more M4B audiobook fil
 - **Split mode** — encode each playlist item as its own M4B with per-video cover art
 - Avoids split-mode filename collisions by auto-suffixing duplicates
 - Optional silence gaps between chapters
-- Resumable downloads and normalization
+- Resumable downloads and audio preparation
 - Dry-run mode to preview without downloading
 - Cleans up intermediate files after encoding
 - Immune to user yt-dlp config files interfering with format or output settings
@@ -22,7 +22,7 @@ Converts a YouTube playlist (or single video) into one or more M4B audiobook fil
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp)
 - [ffmpeg](https://ffmpeg.org/) (includes `ffprobe`)
-- `python3` (used for parsing YouTube chapter metadata)
+- `python3`
 
 All must be on your `PATH`.
 
@@ -47,7 +47,7 @@ python3 ./playlist-to-audiobook.py -u <url> [options]
 | `-i, --items` | All | Playlist item range (e.g. `1-5`, `2,4,6`) |
 | `--chapter-gap` | `0` | Seconds of silence between chapters |
 | `-s, --split` | off | Encode each playlist item as its own M4B file |
-| `-k, --keep` | off | Keep intermediate downloaded files |
+| `-k, --keep` | off | Keep intermediate files after encoding |
 | `-n, --no-normalize` | off | Skip EBU R128 audio normalization |
 | `-v, --verbose` | off | Show detailed yt-dlp and ffmpeg output |
 | `-q, --quiet` | off | Suppress all non-error output |
