@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Converts a YouTube playlist (or single video) into one or more M4B audiobooks with chapter markers and cover art. Single Bash implementation.
+Converts a YouTube playlist (or single video) into one or more M4B audiobooks with chapter markers and cover art. Single Python implementation.
 
 ## Architecture
 
@@ -23,7 +23,7 @@ External dependencies: `yt-dlp`, `ffmpeg`, `ffprobe`, `python3` (must be on PATH
 
 ## File Map
 
-- `playlist-to-audiobook.sh` — Bash implementation
+- `playlist-to-audiobook.py` — Python implementation
 
 ## Key Conventions
 

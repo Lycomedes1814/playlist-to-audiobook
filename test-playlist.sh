@@ -3,22 +3,21 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.sh"
-MAIN_CMD=("$MAIN_SCRIPT")
+MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.py"
+MAIN_CMD=(python3 "$MAIN_SCRIPT")
 TEST_URL="https://www.youtube.com/playlist?list=PLTTyjqCYL18SZ7KGzttmuhjrWl2eb6SjY"
 TEST_ROOT="$SCRIPT_DIR/test-output"
 VERBOSE=0
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [--python|--shell|--script PATH] [-v|--verbose]
+Usage: $(basename "$0") [--python|--script PATH] [-v|--verbose]
 
 Runs a small integration test suite against:
   $TEST_URL
 
 Options:
-  --python        Run the suite against playlist-to-audiobook.py
-  --shell         Run the suite against playlist-to-audiobook.sh (default)
+  --python        Run the suite against playlist-to-audiobook.py (default)
   --script PATH   Run the suite against a specific implementation path
   -v, --verbose   Show command output and assertion details
   -h, --help      Show this help message
@@ -46,11 +45,6 @@ while [[ $# -gt 0 ]]; do
         --python)
             MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.py"
             MAIN_CMD=(python3 "$MAIN_SCRIPT")
-            shift
-            ;;
-        --shell)
-            MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.sh"
-            MAIN_CMD=("$MAIN_SCRIPT")
             shift
             ;;
         --script)

@@ -2,11 +2,6 @@
 
 Converts a YouTube playlist (or single video) into one or more M4B audiobook files with chapter markers and cover art.
 
-Two implementations are included:
-
-- `playlist-to-audiobook.sh` for the original Bash pipeline
-- `playlist-to-audiobook.py` as a Python alternative with the same feature set and CLI flags
-
 ## Features
 
 - Downloads best available audio via `yt-dlp`
@@ -34,9 +29,6 @@ All must be on your `PATH`.
 ## Usage
 
 ```bash
-./playlist-to-audiobook.sh -u <url> [options]
-
-# Python alternative
 python3 ./playlist-to-audiobook.py -u <url> [options]
 ```
 
@@ -66,22 +58,22 @@ python3 ./playlist-to-audiobook.py -u <url> [options]
 
 ```bash
 # Minimal — full playlist
-./playlist-to-audiobook.sh -u "https://www.youtube.com/playlist?list=PLxxxxx"
+python3 ./playlist-to-audiobook.py -u "https://www.youtube.com/playlist?list=PLxxxxx"
 
 # Single video
-./playlist-to-audiobook.sh -u "https://www.youtube.com/watch?v=xxxxx"
+python3 ./playlist-to-audiobook.py -u "https://www.youtube.com/watch?v=xxxxx"
 
 # Custom metadata, 128 kbps, keep files
-./playlist-to-audiobook.sh -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
+python3 ./playlist-to-audiobook.py -u "https://..." -o "my-book" -t "My Book" -a "Author" -b 128 -k
 
 # First 5 videos, custom cover, 2s chapter gaps, output to ~/audiobooks
-./playlist-to-audiobook.sh -u "https://..." -i "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
+python3 ./playlist-to-audiobook.py -u "https://..." -i "1-5" -c cover.jpg --chapter-gap 2 -d ~/audiobooks
 
 # Preview without downloading
-./playlist-to-audiobook.sh -u "https://..." --dry-run
+python3 ./playlist-to-audiobook.py -u "https://..." --dry-run
 
 # Split — one M4B per playlist item, output to ~/audiobooks
-./playlist-to-audiobook.sh -u "https://..." -s -d ~/audiobooks
+python3 ./playlist-to-audiobook.py -u "https://..." -s -d ~/audiobooks
 ```
 
 ## Output
@@ -94,14 +86,6 @@ In both modes, intermediate files are placed in a temporary work directory and r
 
 ## Testing
 
-Run the integration suite against the Bash implementation:
-
 ```bash
 ./test-playlist.sh
-```
-
-Run the same suite against the Python implementation:
-
-```bash
-./test-playlist.sh --python
 ```
