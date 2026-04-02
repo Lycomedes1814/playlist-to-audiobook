@@ -257,7 +257,7 @@ fi
 BASE_DIR="${OUTPUT_DIR:-$(pwd)}"
 BASE_DIR=$(cd "$BASE_DIR" && pwd)
 # Sanitize filename
-SAFE_OUTPUT_NAME=$(echo "$OUTPUT_NAME" | tr '<>:"/\\|?*'"'" '_')
+SAFE_OUTPUT_NAME=$(printf '%s' "$OUTPUT_NAME" | tr -d '\n\r' | tr '<>:"/\\|?*'"'"'\000-\037' '_')
 WORKDIR=$(mktemp -d "${BASE_DIR}/${SAFE_OUTPUT_NAME}.work.XXXXXX")
 LIST_TXT="$WORKDIR/list.txt"
 CHAPTER_TXT="$WORKDIR/chapters.txt"
@@ -443,7 +443,7 @@ if [[ $SPLIT -eq 1 ]]; then
         \( -name "*.webm" -o -name "*.opus" -o -name "*.m4a" \
            -o -name "*.mp3"  -o -name "*.ogg"  -o -name "*.wav" \
            -o -name "*.flac" -o -name "*.aac" \) \
-        ! -name "_silence.wav" | sort)
+        ! -name "_silence.wav" ! -name "*.prep.wav" | sort)
 
     if [[ ${#SPLIT_FILES[@]} -eq 0 ]]; then
         echo "Error: No audio files were downloaded." >&2
@@ -458,7 +458,7 @@ if [[ $SPLIT -eq 1 ]]; then
         # shellcheck disable=SC2001
         ITEM_TITLE=$(sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//' <<< "$ITEM_TITLE")
 
-        SAFE_ITEM_TITLE=$(echo "$ITEM_TITLE" | tr '<>:"/\\|?*'"'" '_')
+        SAFE_ITEM_TITLE=$(printf '%s' "$ITEM_TITLE" | tr -d '\n\r' | tr '<>:"/\\|?*'"'"'\000-\037' '_')
         ITEM_M4B="${BASE_DIR}/${SAFE_ITEM_TITLE}.m4b"
 
         # Per-item cover: look for thumbnail downloaded alongside the audio
@@ -483,13 +483,9 @@ if [[ $SPLIT -eq 1 ]]; then
             ITEM_FFMPEG_ARGS+=(-map 1:v -c:v mjpeg -disposition:v:0 attached_pic)
         fi
 
-        # Escape title for ffmetadata-safe -metadata value
-        ITEM_TITLE_META="${ITEM_TITLE//\\/\\\\}"
-        ITEM_TITLE_META="${ITEM_TITLE_META//=/\\=}"
-
         ITEM_FFMPEG_ARGS+=(
             -c:a aac -ar "$OUTPUT_SAMPLE_RATE" -b:a "${BITRATE}k"
-            -metadata "title=${ITEM_TITLE_META}"
+            -metadata "title=${ITEM_TITLE}"
             -metadata "artist=$ARTIST"
             -metadata "album=$ALBUM"
             -metadata "genre=Audiobook"
@@ -531,7 +527,7 @@ mapfile -t AUDIO_FILES < <(find "$WORKDIR" -maxdepth 1 -type f \
     \( -name "*.webm" -o -name "*.opus" -o -name "*.m4a" \
        -o -name "*.mp3"  -o -name "*.ogg"  -o -name "*.wav" \
        -o -name "*.flac" -o -name "*.aac" \) \
-    ! -name "_silence.wav" | sort)
+    ! -name "_silence.wav" ! -name "*.prep.wav" | sort)
 
 if [[ ${#AUDIO_FILES[@]} -eq 0 ]]; then
     echo "Error: No audio files were downloaded." >&2
@@ -564,7 +560,7 @@ for i in "${!AUDIO_FILES[@]}"; do
     echo "file '${ESCAPED_FILE}'" >> "$LIST_TXT"
 
     DURATION_STR=$(ffprobe -v error -show_entries format=duration -of csv=p=0 -- "$FILE" 2>/dev/null || true)
-    DURATION_STR=$(echo "$DURATION_STR" | tr -d '[:space:]')
+    DURATION_STR=$(tr -d '[:space:]' <<< "$DURATION_STR")
 
     if [[ -z "$DURATION_STR" ]] || ! [[ "$DURATION_STR" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
         log_warn "Could not determine duration for $(basename "$FILE"), skipping chapter markers."
