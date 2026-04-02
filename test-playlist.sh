@@ -664,7 +664,7 @@ assert_m4b_audio_valid "$EVIL_SPACES_OUT"
 EVIL_SPACES_WORKDIR=$(find_workdir "$EVIL_SPACES_DIR" "my audio book (vol 1)")
 assert_all_list_entries_absolute "$EVIL_SPACES_WORKDIR/list.txt"
 
-info "EVIL: Output name starting with -e should not be swallowed by echo"
+info "EVIL: Output name starting with -e should require = syntax"
 EVIL_DASH_DIR="$TEST_ROOT/evil-dash"
 mkdir -p "$EVIL_DASH_DIR"
 EVIL_DASH_LOG="$EVIL_DASH_DIR/run.log"
@@ -672,7 +672,7 @@ run_expect_success "$EVIL_DASH_LOG" \
     "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_DASH_DIR" \
-    -o "-evil-name" \
+    -o="-evil-name" \
     -i "1" \
     -n
 EVIL_DASH_OUT="$EVIL_DASH_DIR/-evil-name.m4b"
@@ -821,7 +821,7 @@ for m4b in "$EVIL_SPLIT_DIR"/*.m4b; do
     assert_m4b_audio_valid "$m4b"
 done
 
-info "EVIL: Output name starting with -- (long-option lookalike) should not confuse any tool"
+info "EVIL: Output name starting with -- should require = syntax"
 EVIL_LONGOPT_DIR="$TEST_ROOT/evil-longopt"
 mkdir -p "$EVIL_LONGOPT_DIR"
 EVIL_LONGOPT_LOG="$EVIL_LONGOPT_DIR/run.log"
@@ -829,7 +829,7 @@ run_expect_success "$EVIL_LONGOPT_LOG" \
     "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_LONGOPT_DIR" \
-    -o "--output-format" \
+    -o="--output-format" \
     -i "1" \
     -n
 # -- gets sanitized: < > : " / \ | ? * ' all become _; dashes survive

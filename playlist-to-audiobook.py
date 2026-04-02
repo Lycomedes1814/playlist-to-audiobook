@@ -924,45 +924,6 @@ def validate_dependencies() -> None:
             raise SystemExit(1)
 
 
-def normalize_argv_for_argparse(argv: list[str]) -> list[str]:
-    value_options = {
-        "-u": "--url",
-        "--url": "--url",
-        "-o": "--output",
-        "--output": "--output",
-        "-d": "--output-dir",
-        "--output-dir": "--output-dir",
-        "-t": "--title",
-        "--title": "--title",
-        "-a": "--artist",
-        "--artist": "--artist",
-        "-l": "--album",
-        "--album": "--album",
-        "-b": "--bitrate",
-        "--bitrate": "--bitrate",
-        "-c": "--cover",
-        "--cover": "--cover",
-        "-i": "--items",
-        "--items": "--items",
-        "--chapter-gap": "--chapter-gap",
-    }
-
-    normalized: list[str] = []
-    index = 0
-    while index < len(argv):
-        token = argv[index]
-        if token == "--":
-            normalized.extend(argv[index:])
-            break
-        if token in value_options and index + 1 < len(argv):
-            normalized.append(f"{value_options[token]}={argv[index + 1]}")
-            index += 2
-            continue
-        normalized.append(token)
-        index += 1
-    return normalized
-
-
 def parse_args(argv: list[str]) -> Config:
     parser = argparse.ArgumentParser(add_help=False, usage=argparse.SUPPRESS)
     parser.add_argument("-u", "--url")
@@ -982,7 +943,7 @@ def parse_args(argv: list[str]) -> Config:
     parser.add_argument("-q", "--quiet", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("-h", "--help", action="store_true")
-    args = parser.parse_args(normalize_argv_for_argparse(argv))
+    args = parser.parse_args(argv)
 
     if args.help:
         print(usage_text(), end="")
