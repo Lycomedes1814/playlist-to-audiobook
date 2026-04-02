@@ -707,7 +707,6 @@ def encode_split_mode(state: PipelineState) -> None:
 
     if state.config.keep:
         disable_cleanup(state)
-    if state.config.keep:
         log_info(state, f"Keeping work files in: {state.workdir}")
     log_ok(state, f"Done: {split_count} file(s) in {state.base_dir}")
 
@@ -765,7 +764,10 @@ def build_file_based_chapter_lines(
                 log_warn(state, f"Could not determine duration for {file_path.name}, skipping chapter markers.")
                 has_chapters = False
                 chapter_lines = []
-                break
+                continue
+
+            if not has_chapters:
+                continue
 
             start_ms = cumulative_ms
             end_ms = int(cumulative_ms + float(duration_str) * 1000)
@@ -853,17 +855,20 @@ def build_chapter_file(state: PipelineState) -> None:
         )
 
     has_chapters, chapter_lines, total_duration_ms = build_file_based_chapter_lines(state, audio_files, silence_file, gap_ms)
+    using_youtube_chapters = False
     if not state.is_playlist and state.video_chapters_json and has_chapters:
         youtube_lines = youtube_chapter_lines(state, total_duration_ms)
         if youtube_lines:
             chapter_lines = youtube_lines
+            using_youtube_chapters = True
 
     if has_chapters and chapter_lines:
         with chapter_txt.open("w", encoding="utf-8") as handle:
             handle.write(";FFMETADATA1\n")
             for line in chapter_lines:
                 handle.write(f"{line}\n")
-        log_info(state, f"Generated {len(chapter_lines) // 5} chapter marker(s).")
+        if not using_youtube_chapters:
+            log_info(state, f"Generated {len(chapter_lines) // 5} chapter marker(s).")
 
 
 def prepare_cover_art(state: PipelineState) -> bool:
@@ -944,7 +949,6 @@ def encode_combined(state: PipelineState, has_cover: bool) -> None:
 
     if state.config.keep:
         disable_cleanup(state)
-    if state.config.keep:
         log_info(state, f"Keeping work files in: {state.workdir}")
     else:
         log_info(state, "Cleaning up work files...")
