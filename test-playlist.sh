@@ -468,6 +468,40 @@ for m4b in "$SPLIT_NONORM_DIR"/*.m4b; do
     assert_m4b_audio_valid "$m4b"
 done
 
+info "Split mode should avoid overwriting an existing sanitized output filename"
+SPLIT_COLLISION_DIR="$TEST_ROOT/split-collision"
+mkdir -p "$SPLIT_COLLISION_DIR"
+PREEXISTING_SPLIT_OUT="$SPLIT_COLLISION_DIR/Edvard Grieg – Lyric Pieces.m4b"
+printf 'placeholder\n' > "$PREEXISTING_SPLIT_OUT"
+SPLIT_COLLISION_LOG="$SPLIT_COLLISION_DIR/run.log"
+run_expect_success "$SPLIT_COLLISION_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$SPLIT_COLLISION_DIR" \
+    -i "1" \
+    -s \
+    -n
+assert_file_exists "$PREEXISTING_SPLIT_OUT"
+assert_file_exists "$SPLIT_COLLISION_DIR/Edvard Grieg – Lyric Pieces (2).m4b"
+assert_m4b_audio_valid "$SPLIT_COLLISION_DIR/Edvard Grieg – Lyric Pieces (2).m4b"
+assert_contains "filename collision" "$SPLIT_COLLISION_LOG"
+
+info "Split mode should fail the run if per-item encoding fails"
+SPLIT_FAIL_DIR="$TEST_ROOT/split-failure"
+mkdir -p "$SPLIT_FAIL_DIR"
+BAD_SPLIT_COVER="$SPLIT_FAIL_DIR/bad-cover.jpg"
+printf 'not an image\n' > "$BAD_SPLIT_COVER"
+SPLIT_FAIL_LOG="$SPLIT_FAIL_DIR/run.log"
+run_expect_failure "$SPLIT_FAIL_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$SPLIT_FAIL_DIR" \
+    -i "1" \
+    -s \
+    -n \
+    -c "$BAD_SPLIT_COVER"
+assert_contains "Failed to encode 1 playlist item(s) in split mode" "$SPLIT_FAIL_LOG"
+
 info "Workdir should be cleaned up when -k is not used"
 CLEANUP_DIR="$TEST_ROOT/cleanup"
 mkdir -p "$CLEANUP_DIR"

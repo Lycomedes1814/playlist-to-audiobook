@@ -151,6 +151,73 @@ log_info() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;37m$1\033[0m"; fi; }
 log_warn() { if [[ $QUIET -eq 0 ]]; then echo -e "  \033[0;33mWarning: $1\033[0m" >&2; fi; }
 log_ok()   { if [[ $QUIET -eq 0 ]]; then echo -e "\033[0;32m$1\033[0m"; fi; }
 
+sanitize_output_name() {
+    local name="$1"
+    local sanitized
+
+    sanitized=$(printf '%s' "$name" | tr -d '\n\r' | tr '<>:"/\\|?*'"'"'\000-\037' '_')
+    if [[ -z "$sanitized" ]]; then
+        sanitized="audiobook"
+    fi
+
+    printf '%s\n' "$sanitized"
+}
+
+extract_json_field() {
+    local json="$1"
+    local field="$2"
+
+    JSON_INPUT="$json" python3 - "$field" <<'PY'
+import json
+import os
+import sys
+
+field = sys.argv[1]
+text = os.environ.get("JSON_INPUT", "")
+
+if not text.strip():
+    raise SystemExit(1)
+
+data = json.loads(text)
+value = data.get(field, "")
+if value in ("", None):
+    raise SystemExit(1)
+
+print(value)
+PY
+}
+
+json_is_playlist() {
+    local json="$1"
+
+    JSON_INPUT="$json" python3 - <<'PY'
+import json
+import os
+
+text = os.environ.get("JSON_INPUT", "")
+if not text.strip():
+    raise SystemExit(1)
+
+data = json.loads(text)
+raise SystemExit(0 if data.get("_type") == "playlist" else 1)
+PY
+}
+
+unique_output_path() {
+    local dir="$1"
+    local stem="$2"
+    local ext="$3"
+    local candidate="${dir}/${stem}${ext}"
+    local suffix=2
+
+    while [[ -e "$candidate" ]]; do
+        candidate="${dir}/${stem} (${suffix})${ext}"
+        suffix=$((suffix + 1))
+    done
+
+    printf '%s\n' "$candidate"
+}
+
 count_requested_items() {
     local spec="$1"
     local total=0
@@ -218,21 +285,26 @@ log_step "[1/6] Fetching metadata..."
 # Detect whether URL is a single video or a playlist
 IS_PLAYLIST=1
 VIDEO_CHAPTERS_JSON=""
-META=$(yt-dlp --ignore-config --flat-playlist --playlist-items 1 --print "%(playlist_title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
-    META=""
+META_JSON=$(yt-dlp --ignore-config --flat-playlist --playlist-items 1 -J -- "$URL" 2>/dev/null) || {
+    META_JSON=""
 }
-PLAYLIST_TITLE=$(echo "$META" | head -n1 | cut -f1)
-UPLOADER=$(echo "$META" | head -n1 | cut -f2)
+if json_is_playlist "$META_JSON" 2>/dev/null; then
+    PLAYLIST_TITLE=$(extract_json_field "$META_JSON" "title" 2>/dev/null || true)
+    UPLOADER=$(extract_json_field "$META_JSON" "uploader" 2>/dev/null || true)
+else
+    PLAYLIST_TITLE=""
+    UPLOADER=""
+fi
 
 # If no playlist title, treat as a single video
 if [[ -z "$PLAYLIST_TITLE" || "$PLAYLIST_TITLE" == "NA" ]]; then
     IS_PLAYLIST=0
-    META=$(yt-dlp --ignore-config --skip-download --print "%(title)s	%(uploader)s" -- "$URL" 2>/dev/null) || {
+    META_JSON=$(yt-dlp --ignore-config --skip-download -J -- "$URL" 2>/dev/null) || {
         log_warn "Could not fetch video metadata, using defaults."
-        META=""
+        META_JSON=""
     }
-    PLAYLIST_TITLE=$(echo "$META" | head -n1 | cut -f1)
-    UPLOADER=$(echo "$META" | head -n1 | cut -f2)
+    PLAYLIST_TITLE=$(extract_json_field "$META_JSON" "title" 2>/dev/null || true)
+    UPLOADER=$(extract_json_field "$META_JSON" "uploader" 2>/dev/null || true)
 
     # Fetch video chapter markers (YouTube chapters)
     VIDEO_CHAPTERS_JSON=$(yt-dlp --ignore-config --skip-download --print "%(chapters)j" -- "$URL" 2>/dev/null) || VIDEO_CHAPTERS_JSON=""
@@ -257,7 +329,7 @@ fi
 BASE_DIR="${OUTPUT_DIR:-$(pwd)}"
 BASE_DIR=$(cd "$BASE_DIR" && pwd)
 # Sanitize filename
-SAFE_OUTPUT_NAME=$(printf '%s' "$OUTPUT_NAME" | tr -d '\n\r' | tr '<>:"/\\|?*'"'"'\000-\037' '_')
+SAFE_OUTPUT_NAME=$(sanitize_output_name "$OUTPUT_NAME")
 WORKDIR=$(mktemp -d "${BASE_DIR}/${SAFE_OUTPUT_NAME}.work.XXXXXX")
 LIST_TXT="$WORKDIR/list.txt"
 CHAPTER_TXT="$WORKDIR/chapters.txt"
@@ -451,6 +523,7 @@ if [[ $SPLIT -eq 1 ]]; then
     fi
 
     SPLIT_COUNT=0
+    SPLIT_FAILED=0
     for FILE in "${SPLIT_FILES[@]}"; do
         BASENAME=$(basename "$FILE")
         # Derive title: strip leading index prefix and extension
@@ -458,8 +531,11 @@ if [[ $SPLIT -eq 1 ]]; then
         # shellcheck disable=SC2001
         ITEM_TITLE=$(sed 's/^[0-9]\+[[:space:]]*-[[:space:]]*//' <<< "$ITEM_TITLE")
 
-        SAFE_ITEM_TITLE=$(printf '%s' "$ITEM_TITLE" | tr -d '\n\r' | tr '<>:"/\\|?*'"'"'\000-\037' '_')
-        ITEM_M4B="${BASE_DIR}/${SAFE_ITEM_TITLE}.m4b"
+        SAFE_ITEM_TITLE=$(sanitize_output_name "$ITEM_TITLE")
+        ITEM_M4B=$(unique_output_path "$BASE_DIR" "$SAFE_ITEM_TITLE" ".m4b")
+        if [[ "$ITEM_M4B" != "${BASE_DIR}/${SAFE_ITEM_TITLE}.m4b" ]]; then
+            log_warn "Output filename collision for '$ITEM_TITLE'; using $(basename "$ITEM_M4B") instead."
+        fi
 
         # Per-item cover: look for thumbnail downloaded alongside the audio
         ITEM_COVER=""
@@ -497,8 +573,14 @@ if [[ $SPLIT -eq 1 ]]; then
             SPLIT_COUNT=$((SPLIT_COUNT + 1))
         else
             log_warn "Failed to encode: $BASENAME"
+            SPLIT_FAILED=$((SPLIT_FAILED + 1))
         fi
     done
+
+    if [[ $SPLIT_FAILED -gt 0 ]]; then
+        echo "Error: Failed to encode $SPLIT_FAILED playlist item(s) in split mode." >&2
+        exit 1
+    fi
 
     if [[ $KEEP -eq 1 ]]; then
         trap - EXIT
