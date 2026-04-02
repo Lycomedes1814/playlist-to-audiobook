@@ -612,13 +612,9 @@ assert_file_exists "$QUIET_OUT"
 QUIET_LINES=$(wc -l < "$QUIET_LOG" | tr -d '[:space:]')
 assert_eq "0" "$QUIET_LINES" "Expected no output in quiet mode"
 
-info "Resolving a single video URL from the test playlist..."
-TEST_VIDEO_URL=$(yt-dlp --ignore-config --flat-playlist --playlist-items 1 \
-    --print webpage_url -- "$TEST_URL" 2>/dev/null) || {
-    fail "Could not resolve a single video URL from the test playlist"
-}
+TEST_VIDEO_URL="https://www.youtube.com/watch?v=7eKlc3Joh-Y"
 
-info "Single video URL should use the non-playlist code path"
+info "Single video URL should use the non-playlist code path and embed YouTube chapters"
 SINGLE_DIR="$TEST_ROOT/single-video"
 mkdir -p "$SINGLE_DIR"
 SINGLE_LOG="$SINGLE_DIR/run.log"
@@ -634,6 +630,7 @@ assert_file_exists "$SINGLE_OUT"
 assert_m4b_audio_valid "$SINGLE_OUT"
 assert_m4b_metadata "$SINGLE_OUT" "title" "Single Video Test"
 assert_m4b_metadata "$SINGLE_OUT" "genre" "Audiobook"
+assert_m4b_chapter_count "$SINGLE_OUT" 3
 
 info "Single video dry-run should report 'single video' type"
 SINGLE_DRY_LOG="$TEST_ROOT/single-dry.log"
