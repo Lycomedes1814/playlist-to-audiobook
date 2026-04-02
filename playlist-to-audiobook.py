@@ -205,8 +205,10 @@ def run_command(
         print("Error: Interrupted.", file=sys.stderr)
         raise SystemExit(130) from None
     except subprocess.CalledProcessError as exc:
-        if capture_output or allow_failure:
-            return exc
+        if capture_output:
+            return subprocess.CompletedProcess(
+                exc.cmd, exc.returncode, stdout=exc.stdout or "", stderr=exc.stderr or "",
+            )
         raise
     return completed
 
@@ -329,6 +331,8 @@ def download_audio(state: PipelineState) -> None:
         if state.config.items:
             args += ["--playlist-items", state.config.items]
     else:
+        if state.config.items:
+            log_warn(state, "--items ignored for single-video URLs.")
         args += ["-o", str(workdir / "001 - %(title).200B.%(ext)s")]
 
     if state.config.split and not state.config.cover:
@@ -559,10 +563,6 @@ def split_cover_for_file(state: PipelineState, file_path: Path) -> str:
             if matches:
                 return str(matches[0])
 
-    for ext in image_exts:
-        matches = sorted(workdir.glob(f"*{ext}"))
-        if matches:
-            return str(matches[0])
     return ""
 
 
@@ -659,7 +659,8 @@ def ffprobe_duration(state: PipelineState, path: Path) -> str:
 
 
 def escape_ffmetadata_value(value: str) -> str:
-    return value.replace("\\", "\\\\").replace("=", r"\=").replace(";", r"\;").replace("#", r"\#")
+    escaped = value.replace("\\", "\\\\").replace("=", r"\=").replace(";", r"\;").replace("#", r"\#")
+    return escaped.replace("\n", " ").replace("\r", "")
 
 
 def build_file_based_chapter_lines(
@@ -884,7 +885,13 @@ def print_dry_run(state: PipelineState) -> None:
     print(f"  Bitrate:    {state.config.bitrate}k")
     print(f"  Normalize:  {'yes (two-pass EBU R128)' if state.config.normalize else 'no'}")
     print(f"  Chapter gap: {state.config.chapter_gap}s")
-    print(f"  Cover:      {state.config.cover or '<per-item thumbnail>'}")
+    if state.config.cover:
+        cover_label = state.config.cover
+    elif state.config.split:
+        cover_label = "<per-item thumbnail>"
+    else:
+        cover_label = "<auto-detected from playlist>"
+    print(f"  Cover:      {cover_label}")
     if state.config.split:
         print(f"  Output dir: {state.base_dir}")
     else:
