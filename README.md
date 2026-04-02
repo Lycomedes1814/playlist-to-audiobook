@@ -2,6 +2,11 @@
 
 Converts a YouTube playlist (or single video) into one or more M4B audiobook files with chapter markers and cover art.
 
+Two implementations are included:
+
+- `playlist-to-audiobook.sh` for the original Bash pipeline
+- `playlist-to-audiobook.py` as a Python alternative with the same feature set and CLI flags
+
 ## Features
 
 - Downloads best available audio via `yt-dlp`
@@ -30,6 +35,9 @@ All must be on your `PATH`.
 
 ```bash
 ./playlist-to-audiobook.sh -u <url> [options]
+
+# Python alternative
+python3 ./playlist-to-audiobook.py -u <url> [options]
 ```
 
 ## Options
@@ -83,3 +91,17 @@ All must be on your `PATH`.
 **Split mode (`-s`):** one `.m4b` per playlist item, named after each video's title, all written to the output directory. If two items would sanitize to the same filename, later files are suffixed as ` (2)`, ` (3)`, and so on instead of overwriting earlier outputs. Per-video thumbnails are automatically downloaded and embedded as cover art. The `-o` and `-t` flags are ignored in split mode; use `-a`/`-l` to set shared artist and album tags. If any per-item encode fails, the overall run exits with an error.
 
 In both modes, intermediate files are placed in a temporary work directory and removed after encoding unless `-k` is set.
+
+## Testing
+
+Run the integration suite against the Bash implementation:
+
+```bash
+./test-playlist.sh
+```
+
+Run the same suite against the Python implementation:
+
+```bash
+./test-playlist.sh --python
+```

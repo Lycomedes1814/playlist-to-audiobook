@@ -4,18 +4,22 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.sh"
+MAIN_CMD=("$MAIN_SCRIPT")
 TEST_URL="https://www.youtube.com/playlist?list=PLTTyjqCYL18SZ7KGzttmuhjrWl2eb6SjY"
 TEST_ROOT="$SCRIPT_DIR/test-output"
 VERBOSE=0
 
 usage() {
     cat <<EOF
-Usage: $(basename "$0") [-v|--verbose]
+Usage: $(basename "$0") [--python|--shell|--script PATH] [-v|--verbose]
 
 Runs a small integration test suite against:
   $TEST_URL
 
 Options:
+  --python        Run the suite against playlist-to-audiobook.py
+  --shell         Run the suite against playlist-to-audiobook.sh (default)
+  --script PATH   Run the suite against a specific implementation path
   -v, --verbose   Show command output and assertion details
   -h, --help      Show this help message
 
@@ -39,6 +43,30 @@ EOF
 while [[ $# -gt 0 ]]; do
     case "$1" in
         -h|--help) usage; exit 0 ;;
+        --python)
+            MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.py"
+            MAIN_CMD=(python3 "$MAIN_SCRIPT")
+            shift
+            ;;
+        --shell)
+            MAIN_SCRIPT="$SCRIPT_DIR/playlist-to-audiobook.sh"
+            MAIN_CMD=("$MAIN_SCRIPT")
+            shift
+            ;;
+        --script)
+            if [[ $# -lt 2 ]]; then
+                echo "--script requires a path" >&2
+                usage >&2
+                exit 1
+            fi
+            MAIN_SCRIPT="$2"
+            if [[ "$MAIN_SCRIPT" == *.py ]]; then
+                MAIN_CMD=(python3 "$MAIN_SCRIPT")
+            else
+                MAIN_CMD=("$MAIN_SCRIPT")
+            fi
+            shift 2
+            ;;
         -v|--verbose) VERBOSE=1; shift ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -228,7 +256,7 @@ run_expect_failure() {
     fi
 }
 
-if [[ ! -x "$MAIN_SCRIPT" ]]; then
+if [[ "${MAIN_SCRIPT##*.}" != "py" && ! -x "$MAIN_SCRIPT" ]]; then
     fail "Main script is not executable: $MAIN_SCRIPT"
 fi
 
@@ -244,7 +272,7 @@ DRY_RUN_DIR="$TEST_ROOT/dry-run"
 mkdir -p "$DRY_RUN_DIR"
 DRY_RUN_LOG="$DRY_RUN_DIR/run.log"
 run_expect_success "$DRY_RUN_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$DRY_RUN_DIR" \
     -o "dry-run-check" \
@@ -258,7 +286,7 @@ INVALID_BITRATE_DIR="$TEST_ROOT/invalid-bitrate"
 mkdir -p "$INVALID_BITRATE_DIR"
 INVALID_BITRATE_LOG="$INVALID_BITRATE_DIR/run.log"
 run_expect_failure "$INVALID_BITRATE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$INVALID_BITRATE_DIR" \
     -o "invalid-bitrate" \
@@ -270,7 +298,7 @@ MISSING_COVER_DIR="$TEST_ROOT/missing-cover"
 mkdir -p "$MISSING_COVER_DIR"
 MISSING_COVER_LOG="$MISSING_COVER_DIR/run.log"
 run_expect_failure "$MISSING_COVER_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$MISSING_COVER_DIR" \
     -o "missing-cover" \
@@ -282,7 +310,7 @@ MISSING_URL_DIR="$TEST_ROOT/missing-url"
 mkdir -p "$MISSING_URL_DIR"
 MISSING_URL_LOG="$MISSING_URL_DIR/run.log"
 run_expect_failure "$MISSING_URL_LOG" \
-    "$MAIN_SCRIPT"
+    "${MAIN_CMD[@]}"
 assert_contains "url" "$MISSING_URL_LOG"
 
 info "Non-numeric bitrate should fail validation"
@@ -290,7 +318,7 @@ STRING_BITRATE_DIR="$TEST_ROOT/string-bitrate"
 mkdir -p "$STRING_BITRATE_DIR"
 STRING_BITRATE_LOG="$STRING_BITRATE_DIR/run.log"
 run_expect_failure "$STRING_BITRATE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -b "abc"
 assert_contains "Bitrate (-b) must be a positive integer" "$STRING_BITRATE_LOG"
@@ -300,7 +328,7 @@ BAD_GAP_DIR="$TEST_ROOT/bad-chapter-gap"
 mkdir -p "$BAD_GAP_DIR"
 BAD_GAP_LOG="$BAD_GAP_DIR/run.log"
 run_expect_failure "$BAD_GAP_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     --chapter-gap "abc"
 assert_contains "Chapter gap (--chapter-gap) must be a non-negative number" "$BAD_GAP_LOG"
@@ -308,7 +336,7 @@ assert_contains "Chapter gap (--chapter-gap) must be a non-negative number" "$BA
 info "Non-existent output directory should fail validation"
 BAD_DIR_LOG="$TEST_ROOT/bad-dir.log"
 run_expect_failure "$BAD_DIR_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "/tmp/playlist-to-audiobook-nonexistent-dir-$$"
 assert_contains "Output directory does not exist" "$BAD_DIR_LOG"
@@ -316,7 +344,7 @@ assert_contains "Output directory does not exist" "$BAD_DIR_LOG"
 info "--help should exit successfully and show usage"
 HELP_LOG="$TEST_ROOT/help.log"
 run_expect_success "$HELP_LOG" \
-    "$MAIN_SCRIPT" --help
+    "${MAIN_CMD[@]}" --help
 assert_contains "Usage:" "$HELP_LOG"
 assert_contains "--url" "$HELP_LOG"
 
@@ -325,7 +353,7 @@ NORMALIZED_DIR="$TEST_ROOT/normalized"
 mkdir -p "$NORMALIZED_DIR"
 NORMALIZED_LOG="$NORMALIZED_DIR/run.log"
 run_expect_success "$NORMALIZED_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$NORMALIZED_DIR" \
     -o "normalized-case" \
@@ -363,7 +391,7 @@ NO_NORM_DIR="$TEST_ROOT/no-normalize"
 mkdir -p "$NO_NORM_DIR"
 NO_NORM_LOG="$NO_NORM_DIR/run.log"
 run_expect_success "$NO_NORM_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$NO_NORM_DIR" \
     -o "no-normalize-case" \
@@ -399,7 +427,7 @@ RELATIVE_DIR="test-output/relative-output"
 mkdir -p "$RELATIVE_DIR"
 RELATIVE_LOG="$RELATIVE_DIR/run.log"
 run_expect_success "$RELATIVE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$RELATIVE_DIR" \
     -o "relative-case" \
@@ -419,7 +447,7 @@ SPLIT_DRY_DIR="$TEST_ROOT/split-dry-run"
 mkdir -p "$SPLIT_DRY_DIR"
 SPLIT_DRY_LOG="$SPLIT_DRY_DIR/run.log"
 run_expect_success "$SPLIT_DRY_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$SPLIT_DRY_DIR" \
     -s \
@@ -433,7 +461,7 @@ SPLIT_NORM_DIR="$TEST_ROOT/split-normalized"
 mkdir -p "$SPLIT_NORM_DIR"
 SPLIT_NORM_LOG="$SPLIT_NORM_DIR/run.log"
 run_expect_success "$SPLIT_NORM_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$SPLIT_NORM_DIR" \
     -o "split-norm-case" \
@@ -457,7 +485,7 @@ SPLIT_NONORM_DIR="$TEST_ROOT/split-no-normalize"
 mkdir -p "$SPLIT_NONORM_DIR"
 SPLIT_NONORM_LOG="$SPLIT_NONORM_DIR/run.log"
 run_expect_success "$SPLIT_NONORM_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$SPLIT_NONORM_DIR" \
     -i "1-2" \
@@ -475,7 +503,7 @@ PREEXISTING_SPLIT_OUT="$SPLIT_COLLISION_DIR/Edvard Grieg – Lyric Pieces.m4b"
 printf 'placeholder\n' > "$PREEXISTING_SPLIT_OUT"
 SPLIT_COLLISION_LOG="$SPLIT_COLLISION_DIR/run.log"
 run_expect_success "$SPLIT_COLLISION_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$SPLIT_COLLISION_DIR" \
     -i "1" \
@@ -493,7 +521,7 @@ BAD_SPLIT_COVER="$SPLIT_FAIL_DIR/bad-cover.jpg"
 printf 'not an image\n' > "$BAD_SPLIT_COVER"
 SPLIT_FAIL_LOG="$SPLIT_FAIL_DIR/run.log"
 run_expect_failure "$SPLIT_FAIL_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$SPLIT_FAIL_DIR" \
     -i "1" \
@@ -507,7 +535,7 @@ CLEANUP_DIR="$TEST_ROOT/cleanup"
 mkdir -p "$CLEANUP_DIR"
 CLEANUP_LOG="$CLEANUP_DIR/run.log"
 run_expect_success "$CLEANUP_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$CLEANUP_DIR" \
     -o "cleanup-case" \
@@ -524,7 +552,7 @@ CUSTOM_COVER_IMG="$CUSTOM_COVER_DIR/test-cover.jpg"
 ffmpeg -y -f lavfi -i "color=c=red:s=2x2:d=1" -frames:v 1 -update 1 "$CUSTOM_COVER_IMG" >/dev/null 2>&1
 CUSTOM_COVER_LOG="$CUSTOM_COVER_DIR/run.log"
 run_expect_success "$CUSTOM_COVER_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$CUSTOM_COVER_DIR" \
     -o "custom-cover-case" \
@@ -540,7 +568,7 @@ BITRATE_DIR="$TEST_ROOT/custom-bitrate"
 mkdir -p "$BITRATE_DIR"
 BITRATE_LOG="$BITRATE_DIR/run.log"
 run_expect_success "$BITRATE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$BITRATE_DIR" \
     -o "bitrate-case" \
@@ -562,7 +590,7 @@ COMMA_DIR="$TEST_ROOT/comma-range"
 mkdir -p "$COMMA_DIR"
 COMMA_LOG="$COMMA_DIR/run.log"
 run_expect_success "$COMMA_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$COMMA_DIR" \
     -o "comma-case" \
@@ -577,7 +605,7 @@ QUIET_DIR="$TEST_ROOT/quiet"
 mkdir -p "$QUIET_DIR"
 QUIET_LOG="$QUIET_DIR/run.log"
 run_expect_success "$QUIET_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$QUIET_DIR" \
     -o "quiet-case" \
@@ -601,7 +629,7 @@ SINGLE_DIR="$TEST_ROOT/single-video"
 mkdir -p "$SINGLE_DIR"
 SINGLE_LOG="$SINGLE_DIR/run.log"
 run_expect_success "$SINGLE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_VIDEO_URL" \
     -d "$SINGLE_DIR" \
     -o "single-video-case" \
@@ -616,7 +644,7 @@ assert_m4b_metadata "$SINGLE_OUT" "genre" "Audiobook"
 info "Single video dry-run should report 'single video' type"
 SINGLE_DRY_LOG="$TEST_ROOT/single-dry.log"
 run_expect_success "$SINGLE_DRY_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_VIDEO_URL" \
     --dry-run
 assert_contains "single video" "$SINGLE_DRY_LOG"
@@ -628,7 +656,7 @@ EVIL_SPACES_DIR="$TEST_ROOT/evil-spaces"
 mkdir -p "$EVIL_SPACES_DIR"
 EVIL_SPACES_LOG="$EVIL_SPACES_DIR/run.log"
 run_expect_success "$EVIL_SPACES_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_SPACES_DIR" \
     -o "my audio book (vol 1)" \
@@ -647,7 +675,7 @@ EVIL_DASH_DIR="$TEST_ROOT/evil-dash"
 mkdir -p "$EVIL_DASH_DIR"
 EVIL_DASH_LOG="$EVIL_DASH_DIR/run.log"
 run_expect_success "$EVIL_DASH_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_DASH_DIR" \
     -o "-evil-name" \
@@ -662,7 +690,7 @@ EVIL_QUOTEDIR="$TEST_ROOT/it's a dir with spaces"
 mkdir -p "$EVIL_QUOTEDIR"
 EVIL_QUOTEDIR_LOG="$EVIL_QUOTEDIR/run.log"
 run_expect_success "$EVIL_QUOTEDIR_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_QUOTEDIR" \
     -o "quote-dir-case" \
@@ -685,7 +713,7 @@ EVIL_TITLE='$(whoami) & `date` | rm -rf / ; echo pwned'
 EVIL_ARTIST='O'\''Brien "The $USER"'
 EVIL_ALBUM='album `id` $(cat /etc/passwd)'
 run_expect_success "$EVIL_SHELL_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_SHELL_DIR" \
     -o "evil-shell-case" \
@@ -706,7 +734,7 @@ EVIL_META_DIR="$TEST_ROOT/evil-ffmeta"
 mkdir -p "$EVIL_META_DIR"
 EVIL_META_LOG="$EVIL_META_DIR/run.log"
 run_expect_success "$EVIL_META_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_META_DIR" \
     -o "evil-ffmeta-case" \
@@ -737,7 +765,7 @@ EVIL_COVER_IMG="$EVIL_COVER_DIR/my cover (1).jpg"
 ffmpeg -y -f lavfi -i "color=c=blue:s=2x2:d=1" -frames:v 1 -update 1 "$EVIL_COVER_IMG" >/dev/null 2>&1
 EVIL_COVER_LOG="$EVIL_COVER_DIR/run.log"
 run_expect_success "$EVIL_COVER_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_COVER_DIR" \
     -o "evil-cover-case" \
@@ -753,7 +781,7 @@ EVIL_ALLSPECIAL_DIR="$TEST_ROOT/evil-allspecial"
 mkdir -p "$EVIL_ALLSPECIAL_DIR"
 EVIL_ALLSPECIAL_LOG="$EVIL_ALLSPECIAL_DIR/run.log"
 run_expect_success "$EVIL_ALLSPECIAL_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_ALLSPECIAL_DIR" \
     -o "***" \
@@ -770,7 +798,7 @@ mkdir -p "$EVIL_BS_DIR"
 EVIL_BS_LOG="$EVIL_BS_DIR/run.log"
 EVIL_BS_TITLE='line1\nline2\ttab'
 run_expect_success "$EVIL_BS_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_BS_DIR" \
     -o "evil-bs-case" \
@@ -787,7 +815,7 @@ EVIL_SPLIT_DIR="$TEST_ROOT/evil-split-spaces"
 mkdir -p "$EVIL_SPLIT_DIR"
 EVIL_SPLIT_LOG="$EVIL_SPLIT_DIR/run.log"
 run_expect_success "$EVIL_SPLIT_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_SPLIT_DIR" \
     -o "evil split case" \
@@ -804,7 +832,7 @@ EVIL_LONGOPT_DIR="$TEST_ROOT/evil-longopt"
 mkdir -p "$EVIL_LONGOPT_DIR"
 EVIL_LONGOPT_LOG="$EVIL_LONGOPT_DIR/run.log"
 run_expect_success "$EVIL_LONGOPT_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_LONGOPT_DIR" \
     -o "--output-format" \
@@ -820,7 +848,7 @@ EVIL_GLOB_DIR="$TEST_ROOT/evil-glob"
 mkdir -p "$EVIL_GLOB_DIR"
 EVIL_GLOB_LOG="$EVIL_GLOB_DIR/run.log"
 run_expect_success "$EVIL_GLOB_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_GLOB_DIR" \
     -o '?file[0]*' \
@@ -838,7 +866,7 @@ EVIL_NEWLINE_LOG="$EVIL_NEWLINE_DIR/run.log"
 # shellcheck disable=SC2016
 EVIL_NEWLINE_NAME=$'before\nafter'
 run_expect_success "$EVIL_NEWLINE_LOG" \
-    "$MAIN_SCRIPT" \
+    "${MAIN_CMD[@]}" \
     -u "$TEST_URL" \
     -d "$EVIL_NEWLINE_DIR" \
     -o "$EVIL_NEWLINE_NAME" \
