@@ -765,4 +765,54 @@ for m4b in "$EVIL_SPLIT_DIR"/*.m4b; do
     assert_m4b_audio_valid "$m4b"
 done
 
+info "EVIL: Output name starting with -- (long-option lookalike) should not confuse any tool"
+EVIL_LONGOPT_DIR="$TEST_ROOT/evil-longopt"
+mkdir -p "$EVIL_LONGOPT_DIR"
+EVIL_LONGOPT_LOG="$EVIL_LONGOPT_DIR/run.log"
+run_expect_success "$EVIL_LONGOPT_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$EVIL_LONGOPT_DIR" \
+    -o "--output-format" \
+    -i "1" \
+    -n
+# -- gets sanitized: < > : " / \ | ? * ' all become _; dashes survive
+EVIL_LONGOPT_OUT="$EVIL_LONGOPT_DIR/--output-format.m4b"
+assert_file_exists "$EVIL_LONGOPT_OUT"
+assert_m4b_audio_valid "$EVIL_LONGOPT_OUT"
+
+info "EVIL: Output name with glob patterns * ? [ ] should be sanitized"
+EVIL_GLOB_DIR="$TEST_ROOT/evil-glob"
+mkdir -p "$EVIL_GLOB_DIR"
+EVIL_GLOB_LOG="$EVIL_GLOB_DIR/run.log"
+run_expect_success "$EVIL_GLOB_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$EVIL_GLOB_DIR" \
+    -o '?file[0]*' \
+    -i "1" \
+    -n
+# ? and * are sanitized to _, but [ and ] pass through
+EVIL_GLOB_OUT="$EVIL_GLOB_DIR/_file[0]_.m4b"
+assert_file_exists "$EVIL_GLOB_OUT"
+assert_m4b_audio_valid "$EVIL_GLOB_OUT"
+
+info "EVIL: Output name containing newline should have it stripped"
+EVIL_NEWLINE_DIR="$TEST_ROOT/evil-newline"
+mkdir -p "$EVIL_NEWLINE_DIR"
+EVIL_NEWLINE_LOG="$EVIL_NEWLINE_DIR/run.log"
+# shellcheck disable=SC2016
+EVIL_NEWLINE_NAME=$'before\nafter'
+run_expect_success "$EVIL_NEWLINE_LOG" \
+    "$MAIN_SCRIPT" \
+    -u "$TEST_URL" \
+    -d "$EVIL_NEWLINE_DIR" \
+    -o "$EVIL_NEWLINE_NAME" \
+    -i "1" \
+    -n
+# Newline is stripped by tr -d '\n\r', so the name becomes "beforeafter"
+EVIL_NEWLINE_OUT="$EVIL_NEWLINE_DIR/beforeafter.m4b"
+assert_file_exists "$EVIL_NEWLINE_OUT"
+assert_m4b_audio_valid "$EVIL_NEWLINE_OUT"
+
 info "All tests passed"
