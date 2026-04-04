@@ -16,7 +16,6 @@ Converts a YouTube playlist (or single video) into one or more M4B audiobook fil
 - Resumable downloads and audio preparation
 - Dry-run mode to preview without downloading
 - Cleans up intermediate files after encoding
-- Immune to user yt-dlp config files interfering with format or output settings
 
 ## Dependencies
 
