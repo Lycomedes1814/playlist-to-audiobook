@@ -18,7 +18,10 @@ from pathlib import Path
 
 OUTPUT_SAMPLE_RATE = 48000
 OUTPUT_CHANNELS = 2
-AUDIO_EXTENSIONS = (".webm", ".opus", ".m4a", ".mp3", ".ogg", ".wav", ".flac", ".aac")
+INTERMEDIATE_AUDIO_SUFFIX = ".w64"
+INTERMEDIATE_PREP_SUFFIX = ".prep.w64"
+INTERMEDIATE_FORMAT = "w64"
+AUDIO_EXTENSIONS = (".webm", ".opus", ".m4a", ".mp3", ".ogg", ".wav", ".w64", ".flac", ".aac")
 
 
 @dataclass(frozen=True)
@@ -305,7 +308,7 @@ def iter_audio_files(state: PipelineState, *, exclude_silence: bool = False) -> 
     return [
         path
         for path in files
-        if not path.name.endswith(".prep.wav") and not (exclude_silence and path.name == "_silence.wav")
+        if not path.name.endswith(INTERMEDIATE_PREP_SUFFIX) and not (exclude_silence and path.name == f"_silence{INTERMEDIATE_AUDIO_SUFFIX}")
     ]
 
 
@@ -396,11 +399,11 @@ def prepare_audio_file(
 ) -> set[str]:
     basename = file_path.name
     ext = file_path.suffix.lstrip(".")
-    wavfile = file_path.with_suffix(".wav")
-    tmpfile = file_path.with_suffix(".prep.wav")
+    intermediate_file = file_path.with_suffix(INTERMEDIATE_AUDIO_SUFFIX)
+    tmpfile = file_path.with_suffix(INTERMEDIATE_PREP_SUFFIX)
 
-    if ext != "wav" and wavfile.exists():
-        log_info(state, f"Removing re-downloaded {basename} (prepared wav exists)")
+    if ext != INTERMEDIATE_AUDIO_SUFFIX.lstrip(".") and intermediate_file.exists():
+        log_info(state, f"Removing re-downloaded {basename} (prepared intermediate exists)")
         file_path.unlink()
         return done_entries
 
@@ -445,6 +448,8 @@ def prepare_audio_file(
                     str(OUTPUT_SAMPLE_RATE),
                     "-ac",
                     str(OUTPUT_CHANNELS),
+                    "-f",
+                    INTERMEDIATE_FORMAT,
                     "-c:a",
                     "pcm_s16le",
                     str(tmpfile),
@@ -455,11 +460,11 @@ def prepare_audio_file(
                 tmpfile.unlink(missing_ok=True)
                 print(f"Error: Could not normalize {basename}.", file=sys.stderr)
                 raise SystemExit(1)
-            tmpfile.replace(wavfile)
-            if file_path != wavfile:
+            tmpfile.replace(intermediate_file)
+            if file_path != intermediate_file:
                 file_path.unlink(missing_ok=True)
             log_info(state, f"Normalized (single-pass): {basename}")
-            return mark_prepared(marker_path, basename, wavfile.name, done_entries)
+            return mark_prepared(marker_path, basename, intermediate_file.name, done_entries)
 
         filter_text = (
             "loudnorm=I=-16:TP=-1.5:LRA=11:"
@@ -479,6 +484,8 @@ def prepare_audio_file(
                 str(OUTPUT_SAMPLE_RATE),
                 "-ac",
                 str(OUTPUT_CHANNELS),
+                "-f",
+                INTERMEDIATE_FORMAT,
                 "-c:a",
                 "pcm_s16le",
                 str(tmpfile),
@@ -489,11 +496,11 @@ def prepare_audio_file(
             tmpfile.unlink(missing_ok=True)
             print(f"Error: Could not normalize {basename}.", file=sys.stderr)
             raise SystemExit(1)
-        tmpfile.replace(wavfile)
-        if file_path != wavfile:
+        tmpfile.replace(intermediate_file)
+        if file_path != intermediate_file:
             file_path.unlink(missing_ok=True)
         log_info(state, f"Normalized: {basename}")
-        return mark_prepared(marker_path, basename, wavfile.name, done_entries)
+        return mark_prepared(marker_path, basename, intermediate_file.name, done_entries)
 
     result = run_command(
         state,
@@ -506,6 +513,8 @@ def prepare_audio_file(
             str(OUTPUT_SAMPLE_RATE),
             "-ac",
             str(OUTPUT_CHANNELS),
+            "-f",
+            INTERMEDIATE_FORMAT,
             "-c:a",
             "pcm_s16le",
             str(tmpfile),
@@ -514,13 +523,13 @@ def prepare_audio_file(
     )
     if result.returncode != 0:
         tmpfile.unlink(missing_ok=True)
-        print(f"Error: Could not convert {basename} to the intermediate WAV format.", file=sys.stderr)
+        print(f"Error: Could not convert {basename} to the intermediate audio format.", file=sys.stderr)
         raise SystemExit(1)
-    tmpfile.replace(wavfile)
-    if file_path != wavfile:
+    tmpfile.replace(intermediate_file)
+    if file_path != intermediate_file:
         file_path.unlink(missing_ok=True)
     log_info(state, f"Prepared: {basename}")
-    return mark_prepared(marker_path, basename, wavfile.name, done_entries)
+    return mark_prepared(marker_path, basename, intermediate_file.name, done_entries)
 
 
 def prepare_audio(state: PipelineState) -> None:
@@ -820,7 +829,7 @@ def build_chapter_file(state: PipelineState) -> None:
     silence_file: Path | None = None
     if state.config.chapter_gap > 0:
         gap_ms = int(state.config.chapter_gap * 1000)
-        silence_file = workdir / "_silence.wav"
+        silence_file = workdir / f"_silence{INTERMEDIATE_AUDIO_SUFFIX}"
         run_command(
             state,
             [
@@ -836,6 +845,8 @@ def build_chapter_file(state: PipelineState) -> None:
                 str(OUTPUT_SAMPLE_RATE),
                 "-ac",
                 str(OUTPUT_CHANNELS),
+                "-f",
+                INTERMEDIATE_FORMAT,
                 "-c:a",
                 "pcm_s16le",
                 str(silence_file),
